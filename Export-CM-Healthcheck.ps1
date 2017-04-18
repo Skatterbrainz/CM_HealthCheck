@@ -27,7 +27,9 @@
         - Added params for CoverPage, Author, CustomerName, etc.
         - Bugfixes for Word document builtin properties updates
         - Minor bugfixes throughout
-
+    Version 0.6 - David Stein (4/18/2017)
+        - Set table styles to be consistent
+	
     Thanks to:
     Base script (the hardest part) created by Rafael Perez (www.rflsystems.co.uk)
     Word functions copied from Carl Webster (www.carlwebster.com)
@@ -591,11 +593,11 @@ try {
 	Write-Verbose "Microsoft Word version: $WordVersion"
 	if ($WordVersion -eq "16.0") {
 		$TableStyle = "Grid Table 4 - Accent 1"
-		$TableSimpleStyle = "List Table 1 Light - Accent 1"
+		$TableSimpleStyle = "Grid Table 4 - Accent 1"
 	}
 	elseif ($WordVersion -eq "15.0") {
 		$TableStyle = "Grid Table 4 - Accent 1"
-		$TableSimpleStyle = "List Table 1 Light - Accent 1"
+		$TableSimpleStyle = "Grid Table 4 - Accent 1"
 	}
 	elseif ($WordVersion -eq "14.0") {
 		$TableStyle = "Medium Shading 1 - Accent 1"
