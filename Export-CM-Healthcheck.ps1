@@ -1,3 +1,4 @@
+#requires -version 4
 <#
 .SYNOPSIS
     Export-CM-Healthcheck.ps1 reads the output from Get-CM-Inventory.ps1 to generate a
@@ -60,6 +61,8 @@ PARAM (
     [parameter (Mandatory = $False, HelpMessage = "Overwrite existing report file")]
         [switch] $Overwrite
 )
+$time1 = Get-Date -Format "hh:mm:ss"
+Start-Transcript -Path ".\_logs\export-reportfile.log" -Append
 
 $FormatEnumerationLimit = -1
 $bLogValidation = $False
@@ -76,13 +79,6 @@ $logfile = $logFolder + $component + ".log"
 $Error.Clear()
 
 #region functions
-
-function Test-Powershell {
-    param (
-        [int] $version = 4
-    )
-    Write-Output ($PSVersionTable.psversion.Major -ge $version)
-}
 
 function Test-Powershell64bit {
     Write-Output ([IntPtr]::size -eq 8)
@@ -122,7 +118,7 @@ Function Test-Folder {
     if (Test-Path -Path $Path) { Write-Output $true }
     elseif ($Create -eq $true) {
         try {
-            New-Item ($Path) -type directory -force | out-null
+            New-Item ($Path) -Type Directory -Force | Out-Null
             Write-Output $true        	
         }
         catch {
@@ -185,29 +181,6 @@ Function Set-WordDocumentProperty {
 		$value
 	)
     $document.BuiltInDocumentProperties($Name) = $Value
-}
-
-<# this function needs more testing #>
-
-Function Add-WordDocumentProperty {
-    param (
-        $document,
-        $name,
-        $value
-    )
-    Write-Verbose "adding word doc property $name with value $value"
-    $binding = â€œSystem.Reflection.BindingFlagsâ€ -as [type]
-    $CustomProperty = $name
-    [array]$ArrayArgs = $CustomProperty,$false,4,$value
-
-    $CustomProps = $document.CustomDocumentProperties
-    $typeCustPrp = $CustomProps.GetType()
-    try {
-        $prop = $typeCustPrp.InvokeMember("add",$binding::InvokeMethod,$null,$CustomProps,$arrayArgs) | Out-Null
-    }
-    catch [System.Exception] {
-        Write-Verbose "failed to add custom property: $name"
-    }
 }
 
 Function ReportSection {
@@ -280,16 +253,16 @@ Function ReportSection {
 					$selection.TypeParagraph()
 				}
 				else {
-                    Write-Verbose "importing XML file: $filename"
-	        		$datatable = Import-Clixml -Path ($reportFolder + $filename)
-		            $count = 0
-		            $datatable | Where-Object {$count++}
+					Write-Verbose "importing XML file: $filename"
+					$datatable = Import-Clixml -Path ($reportFolder + $filename)
+					$count = 0
+					$datatable | Where-Object { $count++ }
 					
 		            if ($count -eq 0) {
 						Write-WordText -wordselection $selection -text $healthCheck.EmptyText -newline $true
 						Write-Log -message ("Table: 0 rows") -logfile $logfile -severity 2
 						$selection.TypeParagraph()
-		                continue
+						continue
 		            }
 
 					switch ($healthCheck.PrintType.ToLower()) {
@@ -363,8 +336,8 @@ Function ReportSection {
 								$records++
 							}
 
-					        $selection.EndOf(15) | Out-Null
-					        $selection.MoveDown() | Out-Null
+							$selection.EndOf(15) | Out-Null
+							$selection.MoveDown() | Out-Null
 							$doc.ActiveWindow.ActivePane.view.SeekView = 0
 							$selection.EndKey(6, 0) | Out-Null
 							$selection.TypeParagraph()
@@ -372,11 +345,11 @@ Function ReportSection {
 						}
 						"simpletable" {
 							Write-Verbose "writing table type: simpletable"
-                            $Table = $Null
-					        $TableRange = $Null
-					        $TableRange = $doc.Application.Selection.Range
-                            $Columns = 0
-                            foreach ($field in $HealthCheck.Fields.Field) {
+							$Table = $Null
+							$TableRange = $Null
+							$TableRange = $doc.Application.Selection.Range
+							$Columns = 0
+							foreach ($field in $HealthCheck.Fields.Field) {
                                 if ($section -eq 5) {
                                     if (($detailed) -and ($field.groupby -notin ('1','2'))) { continue }
                                     elseif ((!($detailed)) -and ($field.groupby -notin ('2','3'))) { continue }
@@ -390,7 +363,7 @@ Function ReportSection {
 							Write-Log -message ("Table: $Columns rows and 2 columns") -logfile $logfile
 							$records = 1
 							$y=0
-		                    foreach ($field in $HealthCheck.Fields.Field) {
+							foreach ($field in $HealthCheck.Fields.Field) {
                                 if ($section -eq 5) {
                                     if (($detailed) -and ($field.groupby -notin ('1','2'))) { continue }
                                     elseif ((!($detailed)) -and ($field.groupby -notin ('2','3'))) { continue }
@@ -449,7 +422,7 @@ Function ReportSection {
 
 					        $selection.EndOf(15) | Out-Null
 					        $selection.MoveDown() | Out-Null
-							$doc.ActiveWindow.ActivePane.view.SeekView = 0
+							$doc.ActiveWindow.ActivePane.View.SeekView = 0
 							$selection.EndKey(6, 0) | Out-Null
 							$selection.TypeParagraph()
 							break
@@ -563,11 +536,6 @@ try {
         Exit
 	}
 	
-    if (!(Test-Powershell -version 3)) {
-        Write-Log -message "Powershell version ($poshversion) not supported. Minimum version should be 3, no futher action taken" -severity 3 -logfile $logfile
-        Exit
-    }
-    
     if (!(Test-Powershell64bit)) {
         Write-Log -message "Powershell is not 64bit, no futher action taken" -severity 3 -logfile $logfile
         Exit
@@ -589,9 +557,9 @@ try {
         break
     }
     $wordVersion = $Word.Version
-	Write-Log -message "Word Version: $WordVersion" -logfile $logfile	
+	Write-Log -Message "Word Version: $WordVersion" -LogFile $logfile	
 	Write-Verbose "Microsoft Word version: $WordVersion"
-	if ($WordVersion -eq "16.0") {
+	if ($WordVersion -ge "16.0") {
 		$TableStyle = "Grid Table 4 - Accent 1"
 		$TableSimpleStyle = "Grid Table 4 - Accent 1"
 	}
@@ -637,14 +605,12 @@ try {
 	}
 
     Write-Verbose "inserting document parts"
-
 	$part.Insert($selection.Range,$True) | Out-Null
-
 	$selection.InsertNewPage()
 	
 	Write-Verbose "inserting table of contents"
-    $toc=$BuildingBlocks.BuildingBlockEntries.Item("Automatic Table 2")
-	$toc.insert($selection.Range,$True) | Out-Null
+    $toc = $BuildingBlocks.BuildingBlockEntries.Item("Automatic Table 2")
+	$toc.Insert($selection.Range,$True) | Out-Null
 
 	$selection.InsertNewPage()
 
@@ -693,3 +659,8 @@ finally {
         Write-Log -message "==========" -logfile $logfile
 	}
 }
+$time2 = Get-Date -Format "hh:mm:ss"
+$RunTime = New-TimeSpan $time1 $time2
+$Difference = "{0:g}" -f $RunTime
+Write-Output "completed in (HH:MM:SS) $Difference"
+Stop-Transcript
