@@ -32,6 +32,8 @@
         - Minor bugfixes throughout
     Version 0.6 - David Stein (4/17/2017)
         - Bugfixes
+	Version 0.61 - David Stein (5/16/2017)
+		- Added -NoHotFix option
 	- Removed Test-PowerShell function dependency
 	- Incremented version from 0.51 to 0.6 for consistency
 
@@ -71,7 +73,9 @@ param (
 	[Parameter(Mandatory = $false, HelpMessage = "HealthCheck query file name")] 
         [string] $HealthcheckFilename = 'cmhealthcheck.xml',
 	[Parameter(Mandatory = $false, HelpMessage = "Overwrite existing report?")] 
-        [switch] $Overwrite
+        [switch] $Overwrite,
+	[Parameter(Mandatory=$False, HelpMessage="Skip hotfix inventory")]
+		[swtich] $NoHotfix
 )
 $HealthcheckDebug = $True
 $FormatEnumerationLimit = -1
@@ -211,7 +215,7 @@ Function ReportSection {
 	Write-Log -Message "Starting Secion $section with detailed as $($detailed.ToString())" -LogFile $logfile
 	
 	foreach ($healthCheck in $HealthCheckXML.dtsHealthCheck.HealthCheck) {
-        if ($healthCheck.IsTextOnly.tolower() -eq 'true') { continue }
+        if ($healthCheck.IsTextOnly.ToLower() -eq 'true') { continue }
         if ($healthCheck.IsActive.tolower() -ne 'true') { continue }
 		if ($healthCheck.Section.tolower() -ne $Section) { continue }
 		
