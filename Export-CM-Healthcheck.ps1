@@ -11,7 +11,30 @@
 .PARAMETER ReportFolder
     [string] [required] Path to output data folder
 
-.PARAMETER
+.PARAMETER Detailed
+    [switch] [optional]
+
+.PARAMETER Healthcheckfilename
+    [string] [optional] healthcheck configuration file name
+    default = cmhealthcheck.xml
+
+.PARAMETER Healthcheckdebug
+    [boolean] [optional] Enable verbose output (or use -Verbose)
+
+.PARAMETER CoverPage
+    [string] [optional] 
+    default = "Slice (Light)"
+
+.PARAMETER CustomerName
+    [string] [optional] Name of customer
+    default = "Company"
+
+.PARAMETER AuthorName
+    [string] [optional] Name of report author
+    default = "Author"
+
+.PARAMETER Overwrite
+    [switch] [optional] Overwrite existing report file if found
 
 .NOTES
     Version 0.1 - Raphael Perez - 24/10/2013 - Initial Script
@@ -30,7 +53,10 @@
         - Minor bugfixes throughout
     Version 0.6 - David Stein (4/18/2017)
         - Set table styles to be consistent
-	
+    Version 0.6.1 - David Stein (4/23/2017)
+        - Added CmdletBinding() and some other additions
+	Version 0.6.2 - David Stein (5/16/2017)
+        - Minor formatting updates
     Thanks to:
     Base script (the hardest part) created by Rafael Perez (www.rflsystems.co.uk)
     Word functions copied from Carl Webster (www.carlwebster.com)
@@ -39,9 +65,11 @@
 .EXAMPLE
     Option 1: powershell.exe -ExecutionPolicy Bypass .\Export-CM-Healthcheck.ps1 [Parameters]
     Option 2: Open Powershell and execute .\Export-CM-Healthcheck.ps1 [Parameters]
+    Option 3: .\Export-CM-HealthCheck.ps1 -ReportFolder "2017-05-17\cm1.contoso.com" -Detailed -CustomerName "ACME" -AuthorName "David Stein" -Overwrite -Verbose
 
 #>
 
+[CmdletBinding()]
 PARAM (
     [Parameter (Mandatory = $True, HelpMessage = "Collected data folder")] 
         [ValidateNotNullOrEmpty()]
@@ -63,7 +91,7 @@ PARAM (
 )
 $time1 = Get-Date -Format "hh:mm:ss"
 Start-Transcript -Path ".\_logs\export-reportfile.log" -Append
-
+$ScriptVersion  = "0.6.2"
 $FormatEnumerationLimit = -1
 $bLogValidation = $False
 $bAutoProps     = $True
@@ -87,10 +115,9 @@ function Test-Powershell64bit {
 Function Write-Log {
     param (
         [String]$Message,
-        [int]$severity = 1,
-        [string]$logfile = '',
-        [bool]$showmsg = $true
-        
+        [int]$Severity = 1,
+        [string]$LogFile = '',
+        [bool]$ShowMsg = $true
     )
     $TimeZoneBias = Get-WmiObject -Query "Select Bias from Win32_TimeZone"
     $Date  = Get-Date -Format "HH:mm:ss.fff"
@@ -98,8 +125,10 @@ Function Write-Log {
     $type  = 1
     
     if (($logfile -ne $null) -and ($logfile -ne '')) {    
-        "<![LOG[$Message]LOG]!><time=`"$date+$($TimeZoneBias.bias)`" date=`"$date2`" component=`"$component`" context=`"`" type=`"$severity`" thread=`"`" file=`"`">" | Out-File -FilePath $logfile -Append -NoClobber -Encoding default
+        "<![LOG[$Message]LOG]!><time=`"$date+$($TimeZoneBias.bias)`" date=`"$date2`" component=`"$component`" context=`"`" type=`"$severity`" thread=`"`" file=`"`">" | 
+            Out-File -FilePath $logfile -Append -NoClobber -Encoding default
     }
+    Write-Verbose "write-log: $Message"
     
     if ($showmsg -eq $true) {
         switch ($severity) {
@@ -156,12 +185,12 @@ function Get-MessageSolution {
 
 function Write-WordText {
     param (
-		$wordselection,
-		$text    = "",
-		$Style   = "No Spacing",
-		$bold    = $false,
-		$newline = $fals,
-		$newpage = $false
+		$WordSelection,
+		[string] $Text    = "",
+		[string] $Style   = "No Spacing",
+		$Bold    = $false,
+		$NewLine = $false,
+		$NewPage = $false
 	)
 	
 	$texttowrite = ""
@@ -176,23 +205,25 @@ function Write-WordText {
 
 Function Set-WordDocumentProperty {
     param (
-		$document,
-		$name,
-		$value
+		$Document,
+		$Name,
+		$Value
 	)
+    Write-Verbose "info: document property [$Name] set to [$Value]"
     $document.BuiltInDocumentProperties($Name) = $Value
 }
 
 Function ReportSection {
     param (
 		$HealthCheckXML,
-        $section,
-		$detailed = $false,
-        $doc,
-		$selection,
-        $logfile
+        $Section,
+		$Detailed = $false,
+        $Doc,
+		$Selection,
+        $LogFile
 	)
-	Write-Log -message "Starting Secion $section with detailed as $($detailed.ToString())" -logfile $logfile
+
+	Write-Log -Message "Starting Secion $section with detailed as $($detailed.ToString())" -LogFile $logfile
 
 	foreach ($healthCheck in $HealthCheckXML.dtsHealthCheck.HealthCheck) {
 		if ($healthCheck.Section.tolower() -ne $Section) { continue }
@@ -207,11 +238,11 @@ Function ReportSection {
                     $Description += " - Detailed"
                 }            
             }
-			Write-WordText -wordselection $selection -text $Description -style $healthCheck.WordStyle -newline $true
+			Write-WordText -WordSelection $selection -Text $Description -Style $healthCheck.WordStyle -NewLine $true
 			Continue;
 		}
 		
-		Write-WordText -wordselection $selection -text $Description -style $healthCheck.WordStyle -newline $true
+		Write-WordText -WordSelection $selection -Text $Description -Style $healthCheck.WordStyle -NewLine $true
         $bFound = $false
         $tableName = $healthCheck.XMLFile
         if ($Section -eq 5) {
@@ -226,7 +257,7 @@ Function ReportSection {
 		foreach ($rp in $ReportTable) {
 			if ($rp.TableName -eq $tableName) {
                 $bFound = $true
-				Write-Log -message (" - Exporting $($rp.XMLFile) ...") -logfile $logfile
+				Write-Log -Message (" - Exporting $($rp.XMLFile) ...") -LogFile $logfile
 				$filename = $rp.XMLFile				
 				if ($filename.IndexOf("_") -gt 0) {
 					$xmltitle = $filename.Substring(0,$filename.IndexOf("_"))
@@ -244,23 +275,23 @@ Function ReportSection {
 					
 					$xmltile += $filename.Substring(0,$filename.IndexOf("_"))
 
-					Write-WordText -wordselection $selection -text $xmltile -style $newstyle -newline $true
+					Write-WordText -WordSelection $selection -Text $xmltile -Style $newstyle -NewLine $true
 				}				
 				
 	            if (!(Test-Path ($reportFolder + $rp.XMLFile))) {
-					Write-WordText -wordselection $selection -text $healthCheck.EmptyText -newline $true
-					Write-Log -message ("Table does not exist") -logfile $logfile -severity 2
+					Write-WordText -WordSelection $selection -Text $healthCheck.EmptyText -NewLine $true
+					Write-Log -Message ("Table does not exist") -LogFile $logfile -Severity 2
 					$selection.TypeParagraph()
 				}
 				else {
 					Write-Verbose "importing XML file: $filename"
-					$datatable = Import-Clixml -Path ($reportFolder + $filename)
+					$datatable = Import-CliXml -Path ($reportFolder + $filename)
 					$count = 0
 					$datatable | Where-Object { $count++ }
 					
 		            if ($count -eq 0) {
-						Write-WordText -wordselection $selection -text $healthCheck.EmptyText -newline $true
-						Write-Log -message ("Table: 0 rows") -logfile $logfile -severity 2
+						Write-WordText -WordSelection $selection -Text $healthCheck.EmptyText -NewLine $true
+						Write-Log -Message ("Table: 0 rows") -LogFile $logfile -Severity 2
 						$selection.TypeParagraph()
 						continue
 		            }
@@ -284,7 +315,7 @@ Function ReportSection {
 							$table.Style = $TableStyle
 
 							$i = 1;
-							Write-Log -message ("Table: $count rows and $Columns columns") -logfile $logfile
+							Write-Log -Message ("Table: $count rows and $Columns columns") -LogFile $logfile
 
 							foreach ($field in $HealthCheck.Fields.Field) {
                                 if ($section -eq 5) {
@@ -301,7 +332,7 @@ Function ReportSection {
 							$y=0
 							foreach ($row in $datatable) {
 								if ($records -ge 500) {
-									Write-Log -message ("Exported $(500*($y+1)) records") -logfile $logfile
+									Write-Log -Message ("Exported $(500*($y+1)) records") -LogFile $logfile
 									$records = 1
 									$y++
 								}
@@ -360,7 +391,7 @@ Function ReportSection {
 							$Table = $doc.Tables.Add($TableRange, $Columns, 2)
 							$table.Style = $TableSimpleStyle
 							$i = 1;
-							Write-Log -message ("Table: $Columns rows and 2 columns") -logfile $logfile
+							Write-Log -Message ("Table: $Columns rows and 2 columns") -LogFile $logfile
 							$records = 1
 							$y=0
 							foreach ($field in $HealthCheck.Fields.Field) {
@@ -370,7 +401,7 @@ Function ReportSection {
                                 }
 
 								if ($records -ge 500) {
-									Write-Log -message ("Exported $(500*($y+1)) records") -logfile $logfile
+									Write-Log -Message ("Exported $(500*($y+1)) records") -LogFile $logfile
 									$records = 1
 									$y++
 								}
@@ -434,7 +465,7 @@ Function ReportSection {
 							$y=0
 		                    foreach ($row in $datatable) {
 								if ($records -ge 500) {
-									Write-Log -message ("Exported $(500*($y+1)) records") -logfile $logfile
+									Write-Log -Message ("Exported $(500*($y+1)) records") -LogFile $logfile
 									$records = 1
 									$y++
 								}
@@ -455,7 +486,7 @@ Function ReportSection {
 										}
 									}
                                     if ([string]::IsNullOrEmpty($TextToWord)) { $TextToWord = " " }
-									Write-WordText -wordselection $selection -text ($TextToWord.ToString()) -newline $true
+									Write-WordText -WordSelection $selection -Text ($TextToWord.ToString()) -NewLine $true
 		                        }
 								$selection.TypeParagraph()
 								$records++
@@ -466,8 +497,8 @@ Function ReportSection {
 			}
 		}
         if ($bFound -eq $false) {
-		    Write-WordText -wordselection $selection -text $healthCheck.EmptyText -newline $true
-		    Write-Log -message ("Table does not exist") -logfile $logfile -severity 2
+		    Write-WordText -WordSelection $selection -Text $healthCheck.EmptyText -NewLine $true
+		    Write-Log -Message ("Table does not exist") -LogFile $logfile -Severity 2
 		    $selection.TypeParagraph()
 		}
 	}
@@ -475,10 +506,12 @@ Function ReportSection {
 
 #endregion
 
+Write-Output "script version: $ScriptVersion"
+
 try {
 	$poshversion = $PSVersionTable.PSVersion.Major
 	if (!(Test-Path -Path ($currentFolder + $healthcheckfilename))) {
-        Write-Host "File $($currentFolder)$($healthcheckfilename) does not exist, no futher action taken" -ForegroundColor Red
+        Write-Warning "File $($currentFolder)$($healthcheckfilename) does not exist, no futher action taken"
 		Exit
     }
     else { 
@@ -486,20 +519,21 @@ try {
     }
 
 	if (!(Test-Path -Path ($currentFolder + "Messages.xml"))) {
-        Write-Host "File $($currentFolder)Messages.xml does not exist, no futher action taken" -ForegroundColor Red
+        Write-Warning "File $($currentFolder)Messages.xml does not exist, no futher action taken"
 		Exit
     }
     else { 
+        Write-Verbose "reading messages.xml data"
         [xml]$MessagesXML = Get-Content ($currentFolder + 'Messages.xml') 
     }
 
     if (Test-Folder -Path $logFolder) {
     	try {
-        	New-Item ($logFolder + 'Test.log') -type file -force | out-null 
-        	Remove-Item ($logFolder + 'Test.log') -force | out-null 
+        	New-Item ($logFolder + 'Test.log') -Type File -Force | Out-Null 
+        	Remove-Item ($logFolder + 'Test.log') -Force | Out-Null 
     	}
     	catch {
-        	Write-Host "Unable to read/write file on $logFolder folder, no futher action taken" -ForegroundColor Red
+        	Write-Warning "Unable to read/write file on $logFolder folder, no futher action taken"
         	Exit    
     	}
 	}
@@ -511,54 +545,56 @@ try {
 
 	if (Test-Folder -Path $reportFolder -Create $false) {
 		if (!(Test-Path -Path ($reportFolder + "config.xml"))) {
-        	Write-Log -message "File $($reportFolder)config.xml does not exist, no futher action taken" -severity 3 -logfile $logfile
+        	Write-Log -Message "File $($reportFolder)config.xml does not exist, no futher action taken" -Severity 3 -LogFile $logfile
         	Exit
 		}
 		else { 
-            $ConfigTable = Import-Clixml -Path ($reportFolder + "config.xml") 
+            Write-Verbose "reading config.xml data"
+            $ConfigTable = Import-CliXml -Path ($reportFolder + "config.xml") 
         }
 		
 		if ($poshversion -ne 3) { $NumberOfDays = $ConfigTable.Rows[0].NumberOfDays }
 		else { $NumberOfDays = $ConfigTable.NumberOfDays }
 		
-		
 		if (!(Test-Path -Path ($reportFolder + "report.xml"))) {
-        	Write-Log -message "File $($reportFolder)report.xml does not exist, no futher action taken" -severity 3 -logfile $logfile
+        	Write-Log -Message "File $($reportFolder)report.xml does not exist, no futher action taken" -Severity 3 -LogFile $logfile
         	Exit
 		}
 		else {
 	 		$ReportTable = New-Object System.Data.DataTable 'ReportTable'
-	        $ReportTable = Import-Clixml -Path ($reportFolder + "report.xml")
+	        $ReportTable = Import-CliXml -Path ($reportFolder + "report.xml")
 		}
 	}
 	else {
-        Write-Host "$reportFolder does not exist, no futher action taken" -ForegroundColor Red
+        Write-Warning "Folder: $reportFolder does not exist, no futher action taken"
         Exit
 	}
 	
     if (!(Test-Powershell64bit)) {
-        Write-Log -message "Powershell is not 64bit, no futher action taken" -severity 3 -logfile $logfile
+        Write-Log -Message "Powershell is not 64bit, no futher action taken" -Severity 3 -LogFile $logfile
         Exit
     }
 
-	Write-Log -message "==========" -logfile $logfile -showmsg $false
-    Write-Log -message "Starting HealthCheck report" -logfile $logfile
-    Write-Log -message "Running Powershell version $poshversion" -logfile $logfile
-    Write-Log -message "Running Powershell 64 bits" -logfile $logfile
-    Write-Log -message "Report Folder: $reportFolder" -logfile $logfile
-    Write-Log -message "Detailed Report: $detailed" -logfile $logfile
-	Write-Log -message "Number Of days: $NumberOfDays" -logfile $logfile
+	Write-Log -Message "==========" -LogFile $logfile -ShowMsg $false
+    Write-Log -Message "Starting HealthCheck report" -LogFile $logfile
+    Write-Log -Message "Script Version: $ScriptVersion" -LogFile $logfile
+    Write-Log -Message "Running Powershell version $poshversion" -LogFile $logfile
+    Write-Log -Message "Running Powershell 64 bits" -LogFile $logfile
+    Write-Log -Message "Report Folder: $reportFolder" -LogFile $logfile
+    Write-Log -Message "Detailed Report: $detailed" -LogFile $logfile
+	Write-Log -Message "Number Of days: $NumberOfDays" -LogFile $logfile
 
-	try {
+	Write-Verbose "info: connecting to Microsoft Word..."
+    try {
         $Word = New-Object -ComObject "Word.Application" -ErrorAction Stop
     }
     catch {
-        Write-Host "Error: This script requires Microsoft Word" -ForegroundColor Red
+        Write-Warning "Error: This script requires Microsoft Word"
         break
     }
     $wordVersion = $Word.Version
 	Write-Log -Message "Word Version: $WordVersion" -LogFile $logfile	
-	Write-Verbose "Microsoft Word version: $WordVersion"
+	Write-Verbose "info: Microsoft Word version: $WordVersion"
 	if ($WordVersion -ge "16.0") {
 		$TableStyle = "Grid Table 4 - Accent 1"
 		$TableSimpleStyle = "Grid Table 4 - Accent 1"
@@ -572,22 +608,21 @@ try {
 		$TableSimpleStyle = "Light Grid - Accent 1"
 	}
 	else { 
-		Write-Log -message "This script requires Word 2010 to 2016 version, no further action taken" -severity 3 -logfile $logfile 
+		Write-Log -Message "This script requires Word 2010 to 2016 version, no further action taken" -Severity 3 -LogFile $logfile 
 		Exit
 	}
 
-    Write-Verbose "opening MS Word"
     $Word.Visible = $True
 	$Doc = $Word.Documents.Add()
 	$Selection = $Word.Selection
 	
-    Write-Verbose "disabling real-time spelling and grammar check"
+    Write-Verbose "info: disabling real-time spelling and grammar check"
 	$Word.Options.CheckGrammarAsYouType  = $False
 	$Word.Options.CheckSpellingAsYouType = $False
 	
-    Write-Verbose "loading default building blocks template"
+    Write-Verbose "info: loading default building blocks template"
 	$word.Templates.LoadBuildingBlocks() | Out-Null	
-	$BuildingBlocks = $word.Templates | Where {$_.name -eq "Built-In Building Blocks.dotx"}
+	$BuildingBlocks = $word.Templates | Where-Object {$_.name -eq "Built-In Building Blocks.dotx"}
 	$part = $BuildingBlocks.BuildingBlockEntries.Item($CoverPage)
 	
     if ($doc -eq $null) {
@@ -595,7 +630,7 @@ try {
         break
     }
     if ($bAutoProps -eq $True) {
-        Write-Verbose "setting document properties"
+        Write-Verbose "info: setting document properties"
         $doc.BuiltInDocumentProperties("Title")    = "System Center Configuration Manager HealthCheck"
         $doc.BuiltInDocumentProperties("Subject")  = "Prepared for $CustomerName"
 	    $doc.BuiltInDocumentProperties("Author")   = $AuthorName
@@ -604,11 +639,11 @@ try {
         $doc.BuiltInDocumentProperties("Keywords") = "sccm,healthcheck,systemcenter,configmgr,$CustomerName"
 	}
 
-    Write-Verbose "inserting document parts"
+    Write-Verbose "info: inserting document parts"
 	$part.Insert($selection.Range,$True) | Out-Null
 	$selection.InsertNewPage()
 	
-	Write-Verbose "inserting table of contents"
+	Write-Verbose "info: inserting table of contents"
     $toc = $BuildingBlocks.BuildingBlockEntries.Item("Automatic Table 2")
 	$toc.Insert($selection.Range,$True) | Out-Null
 
@@ -624,28 +659,30 @@ try {
     $absText = "This document provides a point-in-time inventory and analysis of the "
     $absText += "System Center Configuration Manager site for $CustomerName"
 	
-	Write-WordText -wordselection $selection -text "Abstract" -style "Heading 1" -newline $true
-	Write-WordText -wordselection $selection -text $absText -newline $true
+	Write-WordText -WordSelection $selection -Text "Abstract" -Style "Heading 1" -NewLine $true
+	Write-WordText -WordSelection $selection -Text $absText -NewLine $true
 
 	$selection.InsertNewPage()
 
-    ReportSection -HealthCheckXML $HealthCheckXML -section '1' -doc $doc -selection $selection -logfile $logfile 
-    ReportSection -HealthCheckXML $HealthCheckXML -section '2' -doc $doc -selection $selection -logfile $logfile 
-    ReportSection -HealthCheckXML $HealthCheckXML -section '3' -doc $doc -selection $selection -logfile $logfile 
-    ReportSection -HealthCheckXML $HealthCheckXML -section '4' -doc $doc -selection $selection -logfile $logfile 
-    ReportSection -HealthCheckXML $HealthCheckXML -section '5' -doc $doc -selection $selection -logfile $logfile 
+    ReportSection -HealthCheckXML $HealthCheckXML -section '1' -Doc $doc -Selection $selection -LogFile $logfile 
+    ReportSection -HealthCheckXML $HealthCheckXML -section '2' -Doc $doc -Selection $selection -LogFile $logfile 
+    ReportSection -HealthCheckXML $HealthCheckXML -section '3' -Doc $doc -Selection $selection -LogFile $logfile 
+    ReportSection -HealthCheckXML $HealthCheckXML -section '4' -Doc $doc -Selection $selection -LogFile $logfile 
+    ReportSection -HealthCheckXML $HealthCheckXML -section '5' -Doc $doc -Selection $selection -LogFile $logfile 
+
     if ($detailed -eq $true) {
-        ReportSection -HealthCheckXML $HealthCheckXML -section '5' -detailed $true -doc $doc -selection $selection -logfile $logfile 
+        ReportSection -HealthCheckXML $HealthCheckXML -Section '5' -Detailed $true -Doc $doc -Selection $selection -LogFile $logfile 
     }
-    ReportSection -HealthCheckXML $HealthCheckXML -section '6' -doc $doc -selection $selection -logfile $logfile 
+
+    ReportSection -HealthCheckXML $HealthCheckXML -Section '6' -Doc $doc -Selection $selection -LogFile $logfile 
 }
 catch {
-	Write-Log -message "Something bad happen that I don't know about" -severity 3 -logfile $logfile
-	Write-Log -message "The following error happen, no futher action taken" -severity 3 -logfile $logfile
+	Write-Log -Message "Something bad happen that I don't know about" -Severity 3 -LogFile $logfile
+	Write-Log -Message "The following error happen, no futher action taken" -Severity 3 -LogFile $logfile
     $errorMessage = $Error[0].Exception.Message
     $errorCode = "0x{0:X}" -f $Error[0].Exception.ErrorCode
-    Write-Log -message "Error $errorCode : $errorMessage" -logfile $logfile -severity 3
-    Write-Log -message "Full Error Message Error $($error[0].ToString())" -logfile $logfile -severity 3
+    Write-Log -Message "Error $errorCode : $errorMessage" -LogFile $logfile -Severity 3
+    Write-Log -Message "Full Error Message Error $($error[0].ToString())" -LogFile $logfile -Severity 3
 	$Error.Clear()
 }
 finally {
@@ -655,11 +692,11 @@ finally {
         Write-Host "==========" 
 	}
 	else {
-        Write-Log -message "Ending HealthCheck Export" -logfile $logfile
-        Write-Log -message "==========" -logfile $logfile
+        Write-Log -Message "Ending HealthCheck Export" -LogFile $logfile
+        Write-Log -Message "==========" -LogFile $logfile
 	}
 }
-$time2 = Get-Date -Format "hh:mm:ss"
+$time2   = Get-Date -Format "hh:mm:ss"
 $RunTime = New-TimeSpan $time1 $time2
 $Difference = "{0:g}" -f $RunTime
 Write-Output "completed in (HH:MM:SS) $Difference"
