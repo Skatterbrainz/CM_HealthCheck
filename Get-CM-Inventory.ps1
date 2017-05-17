@@ -13,7 +13,25 @@
 .PARAMETER ReportFolder
     [string] [required] Path to output data folder
 
-.PARAMETER
+.PARAMETER SmsProvider
+    [string] [required] FQDN of SCCM site server
+
+.PARAMETER NumberOfDays
+    [int] [optional] Number of days to go back for alerts in logs
+    default = 7
+
+.PARAMETER HealthcheckFilename
+    [string] [optional] Name of configuration file
+    default is cmhealthcheck.xml
+
+.PARAMETER Overwrite
+    [switch] [optional] Overwrite existing output folder if found
+    Folder is named by datestamp, so this only applies when
+    running repeatedly on the same date
+
+.PARAMETER NoHotfix
+    [switch] [optional] Suppress hotfix inventory
+    Can save significant runtime
 
 .NOTES
     Version 0.1 - Raphael Perez - 24/10/2013 - Initial Script
@@ -80,10 +98,10 @@ param (
 $HealthcheckDebug = $True
 $FormatEnumerationLimit = -1
 $currentFolder = $PWD.Path
-if ($currentFolder.substring($currentFolder.length-1) -ne '\') { $currentFolder+= '\' }
+if ($currentFolder.substring($currentFolder.Length-1) -ne '\') { $currentFolder+= '\' }
 
 $logFolder = $currentFolder + "_Logs\"
-$reportFolder = $currentFolder + (Get-Date -UFormat "%Y-%m-%d") + "\" + $smsprovider + "\"
+$reportFolder = $currentFolder + (Get-Date -UFormat "%Y-%m-%d") + "\" + $SmsProvider + "\"
 
 $component = ($MyInvocation.MyCommand.Name -replace '.ps1', '')
 $logfile = $logFolder + $component + ".log"
@@ -98,11 +116,11 @@ function Test-Powershell64bit {
 
 function Set-ReplaceString {
     param (
-	    [string]$Value,
-	    [string]$SiteCode,
-	    $NumberOfDays = "",
-		[string]$ServerName = "",
-		[bool]$Space = $true
+	    [string] $Value,
+	    [string] $SiteCode,
+	    [int] $NumberOfDays = "",
+		[string] $ServerName = "",
+		[bool] $Space = $true
 	)
 	
 	$return = $value
@@ -116,8 +134,8 @@ function Set-ReplaceString {
 		$return = $return -replace "\s{2}\b"," "
 	}
 	$return = $return -replace "@@SITECODE@@",$SiteCode
-	$return = $return -replace "@@STARTMONTH@@",$date.tostring("01/MM/yyyy")
-	$return = $return -replace "@@TODAYMORNING@@",$date.tostring("yyyy/MM/dd")
+	$return = $return -replace "@@STARTMONTH@@",$date.ToString("01/MM/yyyy")
+	$return = $return -replace "@@TODAYMORNING@@",$date.ToString("yyyy/MM/dd")
 	$return = $return -replace "@@NUMBEROFDAYS@@",$NumberOfDays
 	$return = $return -replace "@@SERVERNAME@@",$ServerName
 
@@ -129,10 +147,10 @@ function Set-ReplaceString {
 
 Function Write-Log {
     param (
-        [String]$Message,
-        [int]$Severity = 1,
-        [string]$LogFile = '',
-        [bool]$ShowMsg = $true
+        [String] $Message,
+        [int] $Severity = 1,
+        [string] $LogFile = '',
+        [bool] $ShowMsg = $true
         
     )
     $TimeZoneBias = Get-WmiObject -Query "Select Bias from Win32_TimeZone"
@@ -141,7 +159,7 @@ Function Write-Log {
     $type=1
     
     if (($logfile -ne $null) -and ($logfile -ne '')) {    
-        "<![LOG[$Message]LOG]!><time=`"$date+$($TimeZoneBias.bias)`" date=`"$date2`" component=`"$component`" context=`"`" type=`"$severity`" thread=`"`" file=`"`">" | Out-File -FilePath $logfile -Append -NoClobber -Encoding default
+        "<![LOG[$Message]LOG]!><time=`"$date+$($TimeZoneBias.Bias)`" date=`"$date2`" component=`"$component`" context=`"`" type=`"$severity`" thread=`"`" file=`"`">" | Out-File -FilePath $logfile -Append -NoClobber -Encoding default
     }
     
     if ($showmsg -eq $true) {
@@ -155,8 +173,8 @@ Function Write-Log {
 
 Function Test-Folder {
     param (
-        [String]$Path,
-        [bool]$Create = $true
+        [String] $Path,
+        [bool] $Create = $true
     )
     if (Test-Path -Path $Path) { return $true }
     elseif ($Create -eq $true) {
@@ -173,17 +191,17 @@ Function Test-Folder {
 
 Function Get-RegistryValue {
     param (
-        [String]$ComputerName,
-        [string]$LogFile = '' ,
-        [string]$KeyName,
-        [string]$KeyValue,
-        [string]$AccessType = 'LocalMachine'
+        [String] $ComputerName,
+        [string] $LogFile = '' ,
+        [string] $KeyName,
+        [string] $KeyValue,
+        [string] $AccessType = 'LocalMachine'
     )
     if ($healthcheckdebug -eq $true) { 
-        Write-Log -Message "Getting registry value from $($computername), $($accesstype), $($keyname), $($keyvalue)" -LogFile $logfile 
+        Write-Log -Message "Getting registry value from $($ComputerName), $($AccessType), $($keyname), $($keyvalue)" -LogFile $logfile 
     }
     try {
-        $Reg = [Microsoft.Win32.RegistryKey]::OpenRemoteBaseKey($accesstype, $computername)
+        $Reg = [Microsoft.Win32.RegistryKey]::OpenRemoteBaseKey($AccessType, $ComputerName)
         $RegKey= $Reg.OpenSubKey($keyname)
 	    if ($RegKey -ne $null) { 
 		    try { $return = $RegKey.GetValue($keyvalue) }
@@ -202,24 +220,24 @@ Function Get-RegistryValue {
 Function ReportSection {
     param (
 	    $HealthCheckXML,
-		[string]$Section,
+		[string] $Section,
 		$SqlConn,
-		[string]$SiteCode,
-		$NumberOfDays,
-		[string]$LogFile,
-		[string]$ServerName,
+		[string] $SiteCode,
+		[int] $NumberOfDays,
+		[string] $LogFile,
+		[string] $ServerName,
 		$ReportTable,
-		[boolean]$Detailed = $false
+		[boolean] $Detailed = $false
 	)
 	
 	Write-Log -Message "Starting Secion $section with detailed as $($detailed.ToString())" -LogFile $logfile
 	
 	foreach ($healthCheck in $HealthCheckXML.dtsHealthCheck.HealthCheck) {
         if ($healthCheck.IsTextOnly.ToLower() -eq 'true') { continue }
-        if ($healthCheck.IsActive.tolower() -ne 'true') { continue }
-		if ($healthCheck.Section.tolower() -ne $Section) { continue }
+        if ($healthCheck.IsActive.ToLower() -ne 'true') { continue }
+		if ($healthCheck.Section.ToLower() -ne $Section) { continue }
 		
-		$sqlquery = $healthCheck.sqlquery
+		$sqlquery = $healthCheck.SqlQuery
         $tablename = (Set-ReplaceString -Value $healthCheck.XMLFile -SiteCode $SiteCode -NumberOfDays $NumberOfDays -ServerName $servername)
         $xmlTableName = $healthCheck.XMLFile
 
@@ -256,37 +274,41 @@ Function ReportSection {
 		
 		try {
 			switch ($healthCheck.querytype.ToLower()) {
-				'mpconnectivity' { Write-MPConnectivity -filename $filename -tablename $tablename -sitecode $SiteCode -SiteCodeQuery $SiteCodeQuery -NumberOfDays $NumberOfDays -logfile $logfile -type 'mplist' | Out-Null}
-				'mpcertconnectivity' { Write-MPConnectivity -filename $filename -tablename $tablename -sitecode $SiteCode -SiteCodeQuery $SiteCodeQuery -NumberOfDays $NumberOfDays -logfile $logfile -type 'mpcert' | Out-Null}
-				'sql' { Get-SQLData -sqlConn $sqlConn -SQLQuery $sqlquery -fileName $fileName -tableName $tablename -siteCode $siteCode -NumberOfDays $NumberOfDays -servername $servername -healthcheck $healthCheck -logfile $logfile -section $section -detailed $detailed | Out-Null}
-				'baseosinfo' { Write-BaseOSInfo -filename $filename -tablename $tablename -sitecode $SiteCode -NumberOfDays $NumberOfDays -servername $servername -logfile $logfile -continueonerror $true | Out-Null}
-				'diskinfo' { Write-DiskInfo -filename $filename -tablename $tablename -sitecode $SiteCode -NumberOfDays $NumberOfDays -servername $servername -logfile $logfile -continueonerror $true | Out-Null}
-				'networkinfo' { Write-NetworkInfo -filename $filename -tablename $tablename -sitecode $SiteCode -NumberOfDays $NumberOfDays -servername $servername -logfile $logfile -continueonerror $true | Out-Null}
-				'rolesinstalled' { Write-RolesInstalled -filename $filename -tablename $tablename -sitecode $SiteCode -NumberOfDays $NumberOfDays -servername $servername -logfile $logfile | Out-Null}
-				'servicestatus' { Write-ServiceStatus -filename $filename -tablename $tablename -sitecode $SiteCode -NumberOfDays $NumberOfDays -servername $servername -logfile $logfile -continueonerror $true | Out-Null}
-				'hotfixstatus' { Write-HotfixStatus -filename $filename -tablename $tablename -sitecode $SiteCode -NumberOfDays $NumberOfDays -servername $servername -logfile $logfile -continueonerror $true | Out-Null}
+				'mpconnectivity' { Write-MPConnectivity -FileName $filename -TableName $tablename -sitecode $SiteCode -SiteCodeQuery $SiteCodeQuery -NumberOfDays $NumberOfDays -logfile $logfile -type 'mplist' | Out-Null}
+				'mpcertconnectivity' { Write-MPConnectivity -FileName $filename -TableName $tablename -sitecode $SiteCode -SiteCodeQuery $SiteCodeQuery -NumberOfDays $NumberOfDays -logfile $logfile -type 'mpcert' | Out-Null}
+				'sql' { Get-SQLData -sqlConn $sqlConn -SQLQuery $sqlquery -FileName $fileName -TableName $tablename -siteCode $siteCode -NumberOfDays $NumberOfDays -servername $servername -healthcheck $healthCheck -logfile $logfile -section $section -detailed $detailed | Out-Null}
+				'baseosinfo' { Write-BaseOSInfo -FileName $filename -TableName $tablename -sitecode $SiteCode -NumberOfDays $NumberOfDays -servername $servername -logfile $logfile -continueonerror $true | Out-Null}
+				'diskinfo' { Write-DiskInfo -FileName $filename -TableName $tablename -sitecode $SiteCode -NumberOfDays $NumberOfDays -servername $servername -logfile $logfile -continueonerror $true | Out-Null}
+				'networkinfo' { Write-NetworkInfo -FileName $filename -TableName $tablename -sitecode $SiteCode -NumberOfDays $NumberOfDays -servername $servername -logfile $logfile -continueonerror $true | Out-Null}
+				'rolesinstalled' { Write-RolesInstalled -FileName $filename -TableName $tablename -sitecode $SiteCode -NumberOfDays $NumberOfDays -servername $servername -logfile $logfile | Out-Null}
+				'servicestatus' { Write-ServiceStatus -FileName $filename -TableName $tablename -sitecode $SiteCode -NumberOfDays $NumberOfDays -servername $servername -logfile $logfile -continueonerror $true | Out-Null}
+				'hotfixstatus' { 
+                    if (-not $NoHotfix) {
+                        Write-HotfixStatus -FileName $filename -TableName $tablename -sitecode $SiteCode -NumberOfDays $NumberOfDays -servername $servername -logfile $logfile -continueonerror $true | Out-Null
+                    }
+                }
            		default {}
 			}
 		}
 		catch {
 			$errorMessage = $Error[0].Exception.Message
 			$errorCode = "0x{0:X}" -f $Error[0].Exception.ErrorCode
-			Write-Log -message "The following error happen" -severity 3 -logfile $logfile
-			Write-Log -message "Error $errorCode : $errorMessage connecting to $servername" -logfile $logfile -severity 3
+			Write-Log -Message "The following error happen" -Severity 3 -LogFile $logfile
+			Write-Log -Message "Error $errorCode : $errorMessage connecting to $servername" -LogFile $logfile -Severity 3
 			$Error.Clear()
 		}
-		Write-Log -message ("$tablename Information...Done") -logfile $logfile
+		Write-Log -Message ("$tablename Information...Done") -LogFile $logfile
     }
-	Write-Log -message "End Secion $section" -logfile $logfile
+	Write-Log -Message "End Secion $section" -LogFile $logfile
 }
 
 Function Set-FormatedValue {
     param (
 	    $Value,
-	    [string]$Format,
-		[string]$SiteCode
+	    [string] $Format,
+		[string] $SiteCode
 	)
-	switch ($format.tolower()) {
+	switch ($format.ToLower()) {
 		'schedule' {
 			$schedule_Class = [wmiclass]""
 			$schedule_class.psbase.path = "\\$($smsprovider)\root\sms\site_$($SiteCodeNamespace):SMS_ScheduleMethods"
@@ -363,42 +385,42 @@ Function Set-FormatedValue {
 }
 
 Function Get-SQLData {
-    PARAM (
+    param (
 	    $sqlConn,
-	    [string]$SQLQuery,
-	    [string]$FileName,
-	    [string]$TableName,
-	    [string]$SiteCode,
-	    $NumberOfDays,
-	    [string]$LogFile,
-		[string]$ServerName,
-		[bool]$ContinueOnError = $true,
+	    [string] $SQLQuery,
+	    [string] $FileName,
+	    [string] $TableName,
+	    [string] $SiteCode,
+	    [int] $NumberOfDays,
+	    [string] $LogFile,
+		[string] $ServerName,
+		[bool] $ContinueOnError = $true,
 		$HealthCheck,
         $Section,
-        [boolean]$Detailed = $false
+        [boolean] $Detailed = $false
 	)
-    Try {
+    try {
         $SqlCommand = $sqlConn.CreateCommand()
 		$logQuery = Set-ReplaceString -value $SQLQuery -sitecode $SiteCode -NumberOfDays $NumberOfDays -servername $servername
 		$executionquery = Set-ReplaceString -value $SQLQuery -sitecode $SiteCode -NumberOfDays $NumberOfDays -servername $servername -space $false
 		
         if ($healthcheckdebug -eq $true) { 
-            Write-Log -message ("SQL Query: $executionquery") -logfile $logfile -showmsg $false
-		    Write-Log -message ("SQL Query: $logQuery") 
+            Write-Log -Message ("SQL Query: $executionquery") -LogFile $logfile -ShowMsg $false
+		    Write-Log -Message ("SQL Query: $logQuery") 
         } 
 
         $SqlCommand.CommandTimeOut = 0
         $SqlCommand.CommandText = $executionquery
-        $DataAdapter = new-object System.Data.SqlClient.SqlDataAdapter $SqlCommand
-        $dataset = new-object System.Data.Dataset
+        $DataAdapter = New-Object System.Data.SqlClient.SqlDataAdapter $SqlCommand
+        $dataset = New-Object System.Data.Dataset
         $DataAdapter.Fill($dataset)
 		
 		if (($dataset.Tables.Count -eq 0) -or ($dataset.Tables[0].Rows.Count -eq 0)) { 
-			if ($healthcheckdebug -eq $true) { Write-Log -message ("SQL Query returned 0 records") -logfile $logfile }
-			Write-Log -message ("Table $tablename is empty skipping writting file $filename ...") -logfile $logfile -severity 2 
+			if ($healthcheckdebug -eq $true) { Write-Log -Message ("SQL Query returned 0 records") -LogFile $logfile }
+			Write-Log -Message ("Table $tablename is empty skipping writting file $filename ...") -LogFile $logfile -Severity 2 
 		}
 		else {
-			if ($healthcheckdebug -eq $true) { Write-Log -message ("SQL Query returned $($dataset.Tables[0].Rows.Count) records") -logfile $logfile }
+			if ($healthcheckdebug -eq $true) { Write-Log -Message ("SQL Query returned $($dataset.Tables[0].Rows.Count) records") -LogFile $logfile }
 			foreach ($field in $healthCheck.Fields.Field) {
                 if ($section -eq 5) {
                     if (($detailed -eq $true) -and ($field.groupby -notin ('1','2'))) { continue }
@@ -410,15 +432,15 @@ Function Get-SQLData {
 					}
 				}
 			}				
-        	, $dataset.Tables[0] | Export-Clixml -Path $filename
+        	, $dataset.Tables[0] | Export-CliXml -Path $filename
 		}
     }
-    Catch {
+    catch {
         $errorMessage = $Error[0].Exception.Message
         $errorCode = "0x{0:X}" -f $Error[0].Exception.ErrorCode
-        if ($continueonerror -eq $false) { Write-Log -message "The following error happen, no futher action taken" -severity 3 -logfile $logfile }
-        else { Write-Log -message "The following error happen" -severity 3 -logfile $logfile }
-        Write-Log -message "Error $errorCode : $errorMessage connecting to $ComputerName" -logfile $logfile -severity 3
+        if ($continueonerror -eq $false) { Write-Log -message "The following error happen, no futher action taken" -Severity 3 -LogFile $logfile }
+        else { Write-Log -message "The following error happen" -Severity 3 -LogFile $logfile }
+        Write-Log -message "Error $errorCode : $errorMessage connecting to $ComputerName" -LogFile $logfile -Severity 3
 	    $Error.Clear()
         if ($continueonerror -eq $false) { Throw "Error $errorCode : $errorMessage connecting to $ComputerName" }
 	}
@@ -426,7 +448,7 @@ Function Get-SQLData {
 
 function Create-DataTable {
     param (
-	    [string]$TableName,
+	    [string] $TableName,
 	    [String[]] $Fields
     )
 	$DataTable = New-Object System.Data.DataTable "$tableName"
@@ -439,20 +461,20 @@ function Create-DataTable {
 
 Function Write-BaseOSInfo {
     param (
-	    [string]$FileName,
-	    [string]$TableName,
-	    [string]$SiteCode,
-	    $NumberOfDays,
-	    [string]$LogFile,
-		[string]$ServerName,
-		[bool]$ContinueOnError = $true
+	    [string] $FileName,
+	    [string] $TableName,
+	    [string] $SiteCode,
+	    [int] $NumberOfDays,
+	    [string] $LogFile,
+		[string] $ServerName,
+		[bool] $ContinueOnError = $true
     )
-    $WMIOS = Get-RFLWmiObject -class "win32_operatingsystem" -computerName $servername -logfile $logfile -continueonerror $continueonerror
+    $WMIOS = Get-RFLWmiObject -Class "win32_operatingsystem" -ComputerName $servername -LogFile $logfile -ContinueOnError $continueonerror
     if ($WMIOS -eq $null) { return }	
 
-    $WMICS = Get-RFLWmiObject -Class "win32_computersystem" -ComputerName $servername -logfile $logfile -continueonerror $continueonerror
-	$WMIProcessor = Get-RFLWmiObject -class "Win32_processor" -ComputerName $servername -logfile $logfile -continueonerror $continueonerror
-    $WMITimeZone = Get-RFLWmiObject -class "Win32_TimeZone" -ComputerName $servername -logfile $logfile -continueonerror $continueonerror
+    $WMICS = Get-RFLWmiObject -Class "win32_computersystem" -ComputerName $servername -LogFile $logfile -ContinueOnError $continueonerror
+	$WMIProcessor = Get-RFLWmiObject -Class "Win32_processor" -ComputerName $servername -LogFile $logfile -ContinueOnError $continueonerror
+    $WMITimeZone  = Get-RFLWmiObject -Class "Win32_TimeZone" -ComputerName $servername -LogFile $logfile -ContinueOnError $continueonerror
 
     ##AV Information
     $avInformation = $null
@@ -460,7 +482,7 @@ Function Write-BaseOSInfo {
 
     foreach ($av in $AVArray) {
         $info = $av.Split("@")
-        if ((Get-ServiceStatus -logfile $logfile -servername $servername -servicename $info[1]).ToString().Tolower().Indexof("error") -lt 0) {
+        if ((Get-ServiceStatus -LogFile $logfile -ServerName $servername -ServiceName $info[1]).ToString().Tolower().Indexof("error") -lt 0) {
             $avInformation = $info[0]
             break
         }
@@ -489,7 +511,7 @@ Function Write-BaseOSInfo {
 	$ProcessorDisplayName= ""
 
 	foreach ($WMIProc in $WMIProcessor) {
-		$ProcessorType = $WMIProc.manufacturer
+		$ProcessorType = $WMIProc.Manufacturer
 		switch ($WMIProc.NumberOfCores) {
 			1 {$numberOfCores = "single core"}
 			2 {$numberOfCores = "dual core"}
@@ -508,11 +530,11 @@ Function Write-BaseOSInfo {
 		}
 		
 		if ($ProcessorDisplayName.Length -eq 0) { 
-			$ProcessorDisplayName = " " + $numberOfCores + " $CpuArchitecture processor " + $WMIProc.name 
+			$ProcessorDisplayName = " " + $numberOfCores + " $CpuArchitecture processor " + $WMIProc.Name
 		}
         else {
 			if ($ProcessorName -ne $WMIProc.Name) { 
-				$ProcessorDisplayName += "/ " + " " + $numberOfCores + " $CpuArchitecture processor " + $WMIProc.name 
+				$ProcessorDisplayName += "/ " + " " + $numberOfCores + " $CpuArchitecture processor " + $WMIProc.Name
 			}
 		}
 		$numProcs += 1
@@ -533,7 +555,7 @@ Function Write-BaseOSInfo {
 	}
 	
 	$Fields = @("ComputerName","OperatingSystem","ServicePack","Version","Architecture","LastBootTime","CurrentTime","TotalPhysicalMemory","FreePhysicalMemory","TimeZone","DaylightInEffect","Domain","Role","Model","NumberOfProcessors","NumberOfLogicalProcessors","Processors","AntiMalware")
-	$BaseOSInfoTable = Create-DataTable -tablename $tableName -fields $Fields
+	$BaseOSInfoTable = Create-DataTable -TableName $tableName -Fields $Fields
 
 	$row = $BaseOSInfoTable.NewRow()
 	$row.ComputerName = $ServerName
@@ -558,20 +580,20 @@ Function Write-BaseOSInfo {
     else { $row.AntiMalware = "Antimalware software not detected" }
 	
     $BaseOSInfoTable.Rows.Add($row)
-    , $BaseOSInfoTable | Export-Clixml -Path ($filename)
+    , $BaseOSInfoTable | Export-CliXml -Path ($filename)
 }
 
 Function Write-DiskInfo {
     param (
-		[string]$FileName,
-		[string]$TableName,
-		[string]$SiteCode,
-		$NumberOfDays,
-		[string]$LogFile,
-		[string]$ServerName,
-		[bool]$ContinueOnError = $true
+		[string] $FileName,
+		[string] $TableName,
+		[string] $SiteCode,
+		[int] $NumberOfDays,
+		[string] $LogFile,
+		[string] $ServerName,
+		[bool] $ContinueOnError = $true
     )
-    $DiskList = Get-RFLWmiObject -class "Win32_LogicalDisk" -filter "DriveType = 3" -ComputerName $servername -logfile $logfile -continueonerror $continueonerror
+    $DiskList = Get-RFLWmiObject -Class "Win32_LogicalDisk" -Filter "DriveType = 3" -ComputerName $servername -LogFile $logfile -ContinueOnError $continueonerror
     if ($DiskList -eq $null) { return }
     
 	$Fields=@("DeviceID","Size","FreeSpace","FileSystem")
@@ -585,20 +607,21 @@ Function Write-DiskInfo {
 		$row.FileSystem = $Disk.FileSystem
 	    $DiskDetails.Rows.Add($row)
     }
-    , $DiskDetails | Export-Clixml -Path ($filename)}
+    , $DiskDetails | Export-CliXml -Path ($filename)
+}
 
 function Write-NetworkInfo {
     param (
-		[string]$FileName,
-		[string]$TableName,
-		[string]$SiteCode,
-		$NumberOfDays,
-		[string]$LogFile,
-		[string]$ServerName,
-		[bool]$ContinueOnError = $true
+		[string] $FileName,
+		[string] $TableName,
+		[string] $SiteCode,
+		[int] $NumberOfDays,
+		[string] $LogFile,
+		[string] $ServerName,
+		[bool] $ContinueOnError = $true
     )
     
-    $IPDetails = Get-RFLWmiObject -class "Win32_NetworkAdapterConfiguration" -filter "IPEnabled = true" -ComputerName $servername -logfile $logfile -continueonerror $continueonerror
+    $IPDetails = Get-RFLWmiObject -Class "Win32_NetworkAdapterConfiguration" -Filter "IPEnabled = true" -ComputerName $servername -logfile $logfile -continueonerror $continueonerror
     if ($IPDetails -eq $null) { return }
 
 	$Fields = @("IPAddress","DefaultIPGateway","IPSubnet","MACAddress","DHCPEnabled")
@@ -613,26 +636,26 @@ function Write-NetworkInfo {
 		if ($IPAddress.DHCPEnable -eq $true) { $row.DHCPEnabled = "TRUE" } else { $row.DHCPEnabled = "FALSE" }
 	    $NetworkInfoTable.Rows.Add($row)
     }
-    , $NetworkInfoTable | Export-Clixml -Path ($filename)
+    , $NetworkInfoTable | Export-CliXml -Path ($filename)
 }
 
 function Write-RolesInstalled {
     param (
-	    [string]$FileName,
-	    [string]$TableName,
-	    [string]$SiteCode,
-	    $NumberOfDays,
-	    [string]$LogfFle,
-		[string]$ServerName,
-		[bool]$ContinueOnError = $true
+	    [string] $FileName,
+	    [string] $TableName,
+	    [string] $SiteCode,
+	    [int] $NumberOfDays,
+	    [string] $LogfFle,
+		[string] $ServerName,
+		[bool] $ContinueOnError = $true
     )
-    $WMISMSListRoles = Get-RFLWMIObject -query "select distinct RoleName from SMS_SCI_SysResUse where NetworkOSPath = '\\\\$Servername'" -computerName $smsprovider -namespace "root\sms\site_$SiteCodeNamespace" -logfile $logfile
+    $WMISMSListRoles = Get-RFLWMIObject -Query "select distinct RoleName from SMS_SCI_SysResUse where NetworkOSPath = '\\\\$Servername'" -computerName $smsprovider -namespace "root\sms\site_$SiteCodeNamespace" -logfile $logfile
     $SMSListRoles = @()
     foreach ($WMIServer in $WMISMSListRoles) { $SMSListRoles += $WMIServer.RoleName }
-    $DPProperties = Get-RFLWMIObject -query "select * from SMS_SCI_SysResUse where RoleName = 'SMS Distribution Point' and NetworkOSPath = '\\\\$Servername' and SiteCode = '$SiteCode'" -computerName $smsprovider -namespace "root\sms\site_$SiteCodeNamespace" -logfile $logfile
+    $DPProperties = Get-RFLWMIObject -Query "select * from SMS_SCI_SysResUse where RoleName = 'SMS Distribution Point' and NetworkOSPath = '\\\\$Servername' and SiteCode = '$SiteCode'" -computerName $smsprovider -namespace "root\sms\site_$SiteCodeNamespace" -logfile $logfile
   
  	$Fields = @("SiteServer", "IIS", "SQLServer", "DP", "PXE", "MultiCast", "PreStaged", "MP", "FSP", "SSRS", "EP", "SUP", "AI", "AWS", "PWS", "SMP", "Console", "Client")
-	$RolesInstalledTable = Create-DataTable -tablename $tableName -fields $Fields
+	$RolesInstalledTable = Create-DataTable -TableName $tableName -Fields $Fields
 	
 	$row = $RolesInstalledTable.NewRow()
 	$row.SiteServer = ($SMSListRoles -contains 'SMS Site Server').ToString()
@@ -644,9 +667,9 @@ function Write-RolesInstalled {
 		$row.PreStaged = "False"
 	}
 	else {
-		$row.PXE = (($DPProperties.Props | where {$_.PropertyName -eq "IsPXE"}).Value -eq 1).ToString()
-		$row.MultiCast = (($DPProperties.Props | where {$_.PropertyName -eq "IsMulticast"}).Value -eq 1).ToString()
-		$row.PreStaged = (($DPProperties.Props | where {$_.PropertyName -eq "PreStagingAllowed"}).Value -eq 1).ToString()
+		$row.PXE = (($DPProperties.Props | Where-Object {$_.PropertyName -eq "IsPXE"}).Value -eq 1).ToString()
+		$row.MultiCast = (($DPProperties.Props | Where-Object {$_.PropertyName -eq "IsMulticast"}).Value -eq 1).ToString()
+		$row.PreStaged = (($DPProperties.Props | Where-Object {$_.PropertyName -eq "PreStagingAllowed"}).Value -eq 1).ToString()
 	}
 	$row.MP   = ($SMSListRoles -contains 'SMS Management Point').ToString()
 	$row.FSP  = ($SMSListRoles -contains 'SMS Fallback Status Point').ToString()
@@ -657,9 +680,9 @@ function Write-RolesInstalled {
 	$row.AWS  = ($SMSListRoles -contains 'SMS Application Web Service').ToString()
 	$row.PWS  = ($SMSListRoles -contains 'SMS Portal Web Site').ToString()
 	$row.SMP  = ($SMSListRoles -contains 'SMS State Migration Point').ToString()
-	$row.Console = (Test-RegistryExist -computername $servername -logfile $logfile -keyname 'SOFTWARE\\Wow6432Node\\Microsoft\\ConfigMgr10\\AdminUI').ToString()
-	$row.Client  = (Test-RegistryExist -computername $servername -logfile $logfile -keyname 'SOFTWARE\\Microsoft\\CCM\\CCMExec').ToString()
-	$row.IIS = ((Get-RegistryValue -computername $server -logfile $logfile -keyname 'SOFTWARE\\Microsoft\\InetStp' -keyvalue 'InstallPath') -ne $null).ToString()
+	$row.Console = (Test-RegistryExist -ComputerName $servername -Logfile $logfile -KeyName 'SOFTWARE\\Wow6432Node\\Microsoft\\ConfigMgr10\\AdminUI').ToString()
+	$row.Client  = (Test-RegistryExist -ComputerName $servername -Logfile $logfile -KeyName 'SOFTWARE\\Microsoft\\CCM\\CCMExec').ToString()
+	$row.IIS     = ((Get-RegistryValue -ComputerName $server -Logfile $logfile -KeyName 'SOFTWARE\\Microsoft\\InetStp' -KeyValue 'InstallPath') -ne $null).ToString()
     $RolesInstalledTable.Rows.Add($row)
     , $RolesInstalledTable | Export-Clixml -Path ($filename)
 }
@@ -667,15 +690,15 @@ function Write-RolesInstalled {
 Function Get-ServiceStatus {
 	param (
 		$LogFile,
-		$ServerName,
-		$ServiceName
+		[string] $ServerName,
+		[string] $ServiceName
     )
-	Write-Log -message "Getting service status for $servername, $servicename" -logfile $logfile
+	Write-Log -message "Getting service status for $servername, $servicename" -LogFile $logfile
     try {
 		$service = Get-Service -ComputerName $servername | Where-Object {$_.Name -eq $servicename}
 		if ($service -ne $null) { $return = $service.Status }
 		else  { $return = "ERROR: Not Found" }
-		Write-Log -message "Service status $return" -logfile $logfile
+		Write-Log -Message "Service status $return" -LogFile $logfile
     }
     catch {
 		$return = "ERROR: Unknown"
@@ -686,15 +709,15 @@ Function Get-ServiceStatus {
 
 function Write-MPConnectivity {
     param (
-		$FileName,
-		$TableName,
-		$SiteCode,
-		$NumberOfDays,
+		[string] $FileName,
+		[string] $TableName,
+		[string] $SiteCode,
+		[int] $NumberOfDays,
 		$LogFile,
-		$Type = 'mplist'
+		[string] $Type = 'mplist'
     )
  	$Fields = @("ServerName", "HTTPReturn")
-	$MPConnectivityTable = Create-DataTable -tableName $tableName -fields $Fields
+	$MPConnectivityTable = Create-DataTable -TableName $tableName -Fields $Fields
 
 	$MPList = Get-RFLWMIObject -query "select * from SMS_SCI_SysResUse where SiteCode = '$SiteCode' and RoleName = 'SMS Management Point'" -computerName $smsprovider -namespace "root\sms\site_$SiteCodeNamespace" -logfile $logfile
 	foreach ($MPInformation in $MPList) {
@@ -711,7 +734,7 @@ function Write-MPConnectivity {
 	            
 		$web = New-Object -ComObject msxml2.xmlhttp
 		$url = $protocol + '://' + $mpname + ':' + $port + '/sms_mp/.sms_aut?' + $type
-        if ($healthcheckdebug -eq $true) { Write-Log -Message ("URL Connection: $url") -logfile $logfile }
+        if ($healthcheckdebug -eq $true) { Write-Log -Message ("URL Connection: $url") -LogFile $logfile }
 		$row = $MPConnectivityTable.NewRow()
 		$row.ServerName = $mpname
 	    try {   
@@ -726,22 +749,22 @@ function Write-MPConnectivity {
 		Write-Log -Message ("Status: $($web.status)") -LogFile $logfile
 		$MPConnectivityTable.Rows.Add($row)
 	}
-    , $MPConnectivityTable | Export-Clixml -Path ($filename)
+    , $MPConnectivityTable | Export-CliXml -Path ($filename)
 }
 
 Function Write-HotfixStatus {
     param (
-		$FileName,
-		$TableName,
-		$SiteCode,
-		$NumberOfDays,
+		[string] $FileName,
+		[string] $TableName,
+		[string] $SiteCode,
+		[int] $NumberOfDays,
 		$LogFile,
-		$ServerName,
+		[string] $ServerName,
 		$ContinueOnError = $true
     )
-    Write-Log -Message "Connecting to server $servername" -logfile $logfile
+    Write-Log -Message "Connecting to server $servername" -LogFile $logfile
     try {         
-		$Session = [activator]::CreateInstance([type]::GetTypeFromProgID("Microsoft.Update.Session",$servername))
+		$Session = [activator]::CreateInstance([type]::GetTypeFromProgID("Microsoft.Update.Session", $servername))
 		$Searcher = $Session.CreateUpdateSearcher()
 		$historyCount = $Searcher.GetTotalHistoryCount()
 		$return = $Searcher.QueryHistory(0, $historyCount) 
@@ -761,20 +784,20 @@ Function Write-HotfixStatus {
     foreach ($hotfix in $return) {
 		$row = $HotfixTable.NewRow()
 		$row.Title = $hotfix.Title
-		$row.Date = $hotfix.Date
+		$row.Date  = $hotfix.Date
 		$HotfixTable.Rows.Add($row)
     }
-    , $HotfixTable | Export-Clixml -Path ($filename)
+    , $HotfixTable | Export-CliXml -Path ($filename)
 }
 
 function Write-ServiceStatus {
     param (
-		$FileName,
-		$TableName,
-		$SiteCode,
-		$NumberOfDays,
+		[string] $FileName,
+		[string] $TableName,
+		[string] $SiteCode,
+		[int] $NumberOfDays,
 		$LogFile,
-		$ServerName,
+		[string] $ServerName,
 		$ContinueOnError = $true
     )
 
@@ -784,52 +807,52 @@ function Write-ServiceStatus {
     $WMISMSListRoles = Get-RFLWMIObject -query "select distinct RoleName from SMS_SCI_SysResUse where NetworkOSPath = '\\\\$Server'" -computerName $smsprovider -namespace "root\sms\site_$SiteCodeNamespace" -logfile $logfile
     $SMSListRoles = @()
     foreach ($WMIServer in $WMISMSListRoles) { $SMSListRoles += $WMIServer.RoleName }
-	Write-Log -message ("Roles discovered: " + $SMSListRoles -join(", ")) -logfile $logfile
+	Write-Log -Message ("Roles discovered: " + $SMSListRoles -join(", ")) -LogFile $logfile
 	
  	$Fields = @("ServiceName", "Status")
-	$ServicesTable = Create-DataTable -tablename $tableName -fields $Fields
+	$ServicesTable = Create-DataTable -TableName $tableName -Fields $Fields
 
     if ($SMSListRoles -contains 'AI Update Service Point') {
 		$row = $ServicesTable.NewRow()
 		$row.ServiceName = "AI_UPDATE_SERVICE_POINT"
-		$row.Status = (Get-ServiceStatus -logfile $logfile -servername $servername -servicename $row.ServiceName)
+		$row.Status = (Get-ServiceStatus -LogFile $logfile -ServerName $servername -ServiceName $row.ServiceName)
 	    $ServicesTable.Rows.Add($row)
     }
 
     if (($SMSListRoles -contains 'SMS Application Web Service') -or ($SMSListRoles -contains 'SMS Distribution Point') -or ($SMSListRoles -contains 'SMS Fallback Status Point') -or ($SMSListRoles -contains 'SMS Management Point') -or ($SMSListRoles -contains 'SMS Portal Web Site')  ) {
 		$row = $ServicesTable.NewRow()
 		$row.ServiceName = "IISADMIN"
-		$row.Status = (Get-ServiceStatus -logfile $logfile -servername $servername -servicename $row.ServiceName)
+		$row.Status = (Get-ServiceStatus -LogFile $logfile -ServerName $servername -ServiceName $row.ServiceName)
 	    $ServicesTable.Rows.Add($row)
 		
 		$row = $ServicesTable.NewRow()
 		$row.ServiceName = "W3SVC"
-		$row.Status = (Get-ServiceStatus -logfile $logfile -servername $servername -servicename $row.ServiceName)
+		$row.Status = (Get-ServiceStatus -LogFile $logfile -ServerName $servername -ServiceName $row.ServiceName)
 	    $ServicesTable.Rows.Add($row)
     }
     
     if ($SMSListRoles -contains 'SMS Component Server') {
 		$row = $ServicesTable.NewRow()
 		$row.ServiceName = "SMS_Executive"
-		$row.Status = (Get-ServiceStatus -logfile $logfile -servername $servername -servicename $row.ServiceName)
+		$row.Status = (Get-ServiceStatus -LogFile $logfile -ServerName $servername -ServiceName $row.ServiceName)
 	    $ServicesTable.Rows.Add($row)
     }
     
     if ($SMSListRoles -contains 'SMS Site Server') {
 		$row = $ServicesTable.NewRow()
 		$row.ServiceName = "SMS_NOTIFICATION_SERVER"
-		$row.Status = (Get-ServiceStatus -logfile $logfile -servername $servername -servicename $row.ServiceName)
+		$row.Status = (Get-ServiceStatus -LogFile $logfile -ServerName $servername -ServiceName $row.ServiceName)
 	    $ServicesTable.Rows.Add($row)
 
 		$row = $ServicesTable.NewRow()
 		$row.ServiceName = "SMS_SITE_COMPONENT_MANAGER"
-		$row.Status = (Get-ServiceStatus -logfile $logfile -servername $servername -servicename $row.ServiceName)
+		$row.Status = (Get-ServiceStatus -LogFile $logfile -ServerName $servername -ServiceName $row.ServiceName)
 	    $ServicesTable.Rows.Add($row)
 		
 		if ($SiteType -ne 1) {
 			$row = $ServicesTable.NewRow()
 			$row.ServiceName = "SMS_SITE_VSS_WRITER"
-			$row.Status = (Get-ServiceStatus -logfile $logfile -servername $servername -servicename $row.ServiceName)
+			$row.Status = (Get-ServiceStatus -LogFile $logfile -ServerName $servername -ServiceName $row.ServiceName)
 		    $ServicesTable.Rows.Add($row)
 		}
     }
@@ -837,7 +860,7 @@ function Write-ServiceStatus {
     if ($SMSListRoles -contains 'SMS Software Update Point') {
 		$row = $ServicesTable.NewRow()
 		$row.ServiceName = "WsusService"
-		$row.Status = (Get-ServiceStatus -logfile $logfile -servername $servername -servicename $row.ServiceName)
+		$row.Status = (Get-ServiceStatus -LogFile $logfile -ServerName $servername -ServiceName $row.ServiceName)
 	    $ServicesTable.Rows.Add($row)
     }
    
@@ -849,28 +872,28 @@ function Write-ServiceStatus {
 		else {
 			$row.ServiceName = 'MSSQL$CONFIGMGRSEC'
 		}
-		$row.Status = (Get-ServiceStatus -logfile $logfile -servername $servername -servicename $row.ServiceName)
+		$row.Status = (Get-ServiceStatus -LogFile $logfile -ServerName $servername -ServiceName $row.ServiceName)
 		$ServicesTable.Rows.Add($row)
 
 		$row = $ServicesTable.NewRow()
 		$row.ServiceName = "SQLWriter"
-		$row.Status = (Get-ServiceStatus -logfile $logfile -servername $servername -servicename $row.ServiceName)
+		$row.Status = (Get-ServiceStatus -LogFile $logfile -ServerName $servername -ServiceName $row.ServiceName)
 	    $ServicesTable.Rows.Add($row)
     }
     
     if ($SMSListRoles -contains 'SMS SRS Reporting Point') {
 		$row = $ServicesTable.NewRow()
 		$row.ServiceName = "ReportServer"
-		$row.Status = (Get-ServiceStatus -logfile $logfile -servername $servername -servicename $row.ServiceName)
+		$row.Status = (Get-ServiceStatus -LogFile $logfile -ServerName $servername -ServiceName $row.ServiceName)
 	    $ServicesTable.Rows.Add($row)
     }
-    , $ServicesTable | Export-Clixml -Path ($filename)
+    , $ServicesTable | Export-CliXml -Path ($filename)
 }
 
 function Get-RFLCredentials {
     try {
         $cred = Get-Credentials
-        if ($healthcheckdebug -eq $true) { Write-Log -message ("Trying username: $($cred.Username)") -logfile $logfile }
+        if ($healthcheckdebug -eq $true) { Write-Log -Message ("Trying username: $($cred.Username)") -LogFile $logfile }
         Write-Output $cred
     }
     catch {
@@ -880,36 +903,36 @@ function Get-RFLCredentials {
 
 function Get-RFLWmiObject {
     param (
-		[String]$Class,
-		[string]$Filter = '',
-		[string]$Query = '',
-		[String]$ComputerName,
-		[String]$Namespace = "root\cimv2",
-		[String]$LogFile,
-		[bool]$ContinueOnError = $false
+		[String] $Class,
+		[string] $Filter = '',
+		[string] $Query = '',
+		[String] $ComputerName,
+		[String] $Namespace = "root\cimv2",
+		[String] $LogFile,
+		[bool] $ContinueOnError = $false
     )
     if ($query -ne '') { $class = $query }
-    if ($healthcheckdebug -eq $true) { Write-Log -message ("WMI Query: \\$ComputerName\$Namespace, $class, filter: $filter") -logfile $logfile }
+    if ($healthcheckdebug -eq $true) { Write-Log -Message ("WMI Query: \\$ComputerName\$Namespace, $class, filter: $filter") -LogFile $logfile }
 
-    if ($query -ne '') { $WMIObject = get-wmiobject -Query $query -Namespace $Namespace -ComputerName $ComputerName -ErrorAction SilentlyContinue }
-    elseif ($filter -ne '') { $WMIObject = get-wmiobject -class $class -Filter $filter -namespace $Namespace -ComputerName $ComputerName -ErrorAction SilentlyContinue }
-    else { $WMIObject = get-wmiobject -class $class -namespace $Namespace -ComputerName $ComputerName -ErrorAction SilentlyContinue }
+    if ($query -ne '') { $WMIObject = Get-WmiObject -Query $query -Namespace $Namespace -ComputerName $ComputerName -ErrorAction SilentlyContinue }
+    elseif ($filter -ne '') { $WMIObject = Get-WmiObject -Class $class -Filter $filter -Namespace $Namespace -ComputerName $ComputerName -ErrorAction SilentlyContinue }
+    else { $WMIObject = Get-WmiObject -Class $class -NameSpace $Namespace -ComputerName $ComputerName -ErrorAction SilentlyContinue }
 
 	if ($WMIObject -eq $null) {
-        if ($healthcheckdebug -eq $true) { Write-Log -message ("WMI Query returned 0) records") -logfile $logfile -severity 2 }
+        if ($healthcheckdebug -eq $true) { Write-Log -Message ("WMI Query returned 0) records") -LogFile $logfile -Severity 2 }
 	}
 	else {
 		$i = 1
 		foreach ($obj in $wmiobj) { i++ }
-		if ($healthcheckdebug -eq $true) { Write-Log -message ("WMI Query returned $($i) records") -logfile $logfile }
+		if ($healthcheckdebug -eq $true) { Write-Log -Message ("WMI Query returned $($i) records") -LogFile $logfile }
 	}
 	
     if ($Error.Count -ne 0) {
 		$errorMessage = $Error[0].Exception.Message
 		$errorCode = "0x{0:X}" -f $Error[0].Exception.ErrorCode
-		if ($continueonerror -eq $false) { Write-Log -message "The following error happen, no futher action taken" -severity 3 -logfile $logfile }
-		else { Write-Log -message "The following error happen" -severity 3 -logfile $logfile }
-		Write-Log -message "Error $errorCode : $errorMessage connecting to $ComputerName" -logfile $logfile -severity 3
+		if ($continueonerror -eq $false) { Write-Log -Message "The following error happen, no futher action taken" -Severity 3 -LogFile $logfile }
+		else { Write-Log -Message "The following error happen" -Severity 3 -LogFile $logfile }
+		Write-Log -message "Error $errorCode : $errorMessage connecting to $ComputerName" -LogFile $logfile -Severity 3
 		$Error.Clear()
 		if ($continueonerror -eq $false) { Throw "Error $errorCode : $errorMessage connecting to $ComputerName" }
     }
@@ -919,8 +942,8 @@ function Get-RFLWmiObject {
 
 Function Get-SQLServerConnection {
     param (
-		[string]$SQLServer,
-		[string]$DBName
+		[string] $SQLServer,
+		[string] $DBName
     )
 
     Try {
@@ -931,8 +954,8 @@ Function Get-SQLServerConnection {
     Catch {
 		$errorMessage = $_.Exception.Message
 		$errorCode = "0x{0:X}" -f $_.Exception.ErrorCode
-		Write-Log -message "The following error happen, no futher action taken" -severity 3 -logfile $logfile
-		Write-Log -message "Error $errorCode : $errorMessage connecting to $ComputerName" -logfile $logfile -severity 3
+		Write-Log -Message "The following error happen, no futher action taken" -Severity 3 -LogFile $logfile
+		Write-Log -Message "Error $errorCode : $errorMessage connecting to $ComputerName" -LogFile $logfile -Severity 3
 		$Error.Clear()
 		Throw "Error $errorCode : $errorMessage connecting to $SQLServer"
     }
@@ -940,16 +963,16 @@ Function Get-SQLServerConnection {
 
 Function Test-RegistryExist {
     param (
-		[String]$computername,
-		[string]$logfile = '' ,
-		[string]$keyname,
-		[string]$accesstype = 'LocalMachine'
+		[String] $ComputerName,
+		[string] $LogFile = '' ,
+		[string] $KeyName,
+		[string] $AccessType = 'LocalMachine'
     )
-	Write-Log -message "Testing registry key from $($computername), $($accesstype), $($keyname)" -logfile $logfile
+	Write-Log -Message "Testing registry key from $($ComputerName), $($AccessType), $($KeyName)" -LogFile $logfile
 
     try {
-		$Reg = [Microsoft.Win32.RegistryKey]::OpenRemoteBaseKey($accesstype, $computername)
-		$RegKey= $Reg.OpenSubKey($keyname)
+		$Reg = [Microsoft.Win32.RegistryKey]::OpenRemoteBaseKey($AccessType, $ComputerName)
+		$RegKey = $Reg.OpenSubKey($KeyName)
 		$return = ($RegKey -ne $null)
     }
     catch {
@@ -960,7 +983,7 @@ Function Test-RegistryExist {
 }
 
 function Test-Admin { 
-	$identity = [System.Security.Principal.WindowsIdentity]::GetCurrent() 
+	$identity  = [System.Security.Principal.WindowsIdentity]::GetCurrent() 
 	$principal = New-Object System.Security.Principal.WindowsPrincipal($identity) 
 	$admin = [System.Security.Principal.WindowsBuiltInRole]::Administrator 
 	$principal.IsInRole($admin) 
@@ -976,7 +999,7 @@ try {
 
 	if (Test-Path -Path $reportFolder) {
 		if ($overwrite -eq $true) {
-            Write-Host "removing previous output folder $($reportFolder)..."
+            Write-Verbose "removing previous output folder $($reportFolder)..."
             Remove-Item -Path "$($reportFolder)" -Recurse -Force
         }
         else {
@@ -987,8 +1010,8 @@ try {
 
     if (Test-Folder -Path $logFolder) {
     	try {
-        	New-Item ($logFolder + 'Test.log') -type file -force | out-null 
-        	Remove-Item ($logFolder + 'Test.log') -force | out-null 
+        	New-Item ($logFolder + 'Test.log') -Type File -Force | Out-Null 
+        	Remove-Item ($logFolder + 'Test.log') -Force | Out-Null 
     	}
     	catch {
         	Write-Host "Unable to read/write file on $logFolder folder, no futher action taken" -ForegroundColor Red
@@ -1009,8 +1032,8 @@ try {
 
 	if (Test-Folder -Path $reportFolder) {
     	try {
-        	New-Item ($reportFolder + 'Test.log') -type file -force | out-null 
-        	Remove-Item ($reportFolder + 'Test.log') -force | out-null 
+        	New-Item ($reportFolder + 'Test.log') -Type file -Force | Out-Null 
+        	Remove-Item ($reportFolder + 'Test.log') -Force | Out-Null 
     	}
     	catch {
         	Write-Host "Unable to read/write file on $reportFolder folder, no futher action taken" -ForegroundColor Red
@@ -1022,64 +1045,64 @@ try {
         Exit
 	}
 	
-	$poshversion = $PSVersionTable.psversion.Major
+	$poshversion = $PSVersionTable.PSVersion.Major
 	
     if (!(Test-Powershell64bit)) {
-        Write-Log -message "Powershell is not 64bit, no futher action taken" -severity 3 -logfile $logfile
+        Write-Log -Message "Powershell is not 64bit, no futher action taken" -Severity 3 -LogFile $logfile
         Exit
     }
  
-    Write-Log -message "==========" -logfile $logfile -showmsg $false
-    Write-Log -message "Starting HealthCheck" -logfile $logfile
-    Write-Log -message "Running Powershell version $($PSVersionTable.psversion.Major)" -logfile $logfile
-    Write-Log -message "Running Powershell 64 bits" -logfile $logfile
-    Write-Log -message "SMS Provider: $smsprovider" -logfile $logfile
+    Write-Log -Message "==========" -LogFile $logfile -ShowMsg $false
+    Write-Log -Message "Starting HealthCheck" -LogFile $logfile
+    Write-Log -Message "Running Powershell version $($PSVersionTable.psversion.Major)" -LogFile $logfile
+    Write-Log -Message "Running Powershell 64 bits" -LogFile $logfile
+    Write-Log -Message "SMS Provider: $smsprovider" -LogFile $logfile
         
-    $WMISMSProvider = Get-RFLWmiObject -class "SMS_ProviderLocation" -namespace "Root\SMS" -computerName $smsprovider -logfile $logfile
+    $WMISMSProvider = Get-RFLWmiObject -Class "SMS_ProviderLocation" -NameSpace "Root\SMS" -ComputerName $smsprovider -LogFile $logfile
     $SiteCodeNamespace = $WMISMSProvider.SiteCode
-	Write-Log -message "Site Code: $SiteCodeNamespace" -logfile $logfile
+	Write-Log -Message "Site Code: $SiteCodeNamespace" -LogFile $logfile
 	
-    $WMISMSSite = Get-RFLWmiObject -class "SMS_Site" -namespace "Root\SMS\Site_$SiteCodeNamespace" -Filter "SiteCode = '$SiteCodeNamespace'" -computerName $smsprovider -logfile $logfile
+    $WMISMSSite = Get-RFLWmiObject -Class "SMS_Site" -NameSpace "Root\SMS\Site_$SiteCodeNamespace" -Filter "SiteCode = '$SiteCodeNamespace'" -ComputerName $smsprovider -LogFile $logfile
 	$SMSSiteServer = $WMISMSSite.ServerName
-	Write-Log -message "Site Server: $($WMISMSSite.ServerName)" -logfile $logfile
-	Write-Log -message "Site Version: $($WMISMSSite.Version)" -logfile $logfile
+	Write-Log -Message "Site Server: $($WMISMSSite.ServerName)" -LogFile $logfile
+	Write-Log -Message "Site Version: $($WMISMSSite.Version)" -LogFile $logfile
 
 	if (-not ($WMISMSSite.Version -like "5.*")) {
-		Write-Log -message "SCCM Site $($WMISMSSite.Version) not supported. No further action taken" -severity 3 -logfile $logfile
+		Write-Log -Message "SCCM Site $($WMISMSSite.Version) not supported. No further action taken" -Severity 3 -LogFile $logfile
 		Exit
 	}
 	
-    $SQLServerName  = Get-RegistryValue -computername $SMSSiteServer -logfile $logfile -keyname 'SOFTWARE\\Microsoft\\SMS\\SQL Server\\Site System SQL Account' -keyvalue 'Server'
-    $SQLServiceName = Get-RegistryValue -computername $SMSSiteServer -logfile $logfile -keyname 'SOFTWARE\\Microsoft\\SMS\\SQL Server' -keyvalue 'Service Name'
-    $SQLPort   = Get-RegistryValue -computername $SMSSiteServer -logfile $logfile -keyname 'SOFTWARE\\Microsoft\\SMS\\SQL Server\\Site System SQL Account' -keyvalue 'Port'
-    $SQLDBName = Get-RegistryValue -computername $SMSSiteServer -logfile $logfile -keyname 'SOFTWARE\\Microsoft\\SMS\\SQL Server\\Site System SQL Account' -keyvalue 'Database Name'
+    $SQLServerName  = Get-RegistryValue -ComputerName $SMSSiteServer -LogFile $logfile -KeyName 'SOFTWARE\\Microsoft\\SMS\\SQL Server\\Site System SQL Account' -KeyValue 'Server'
+    $SQLServiceName = Get-RegistryValue -ComputerName $SMSSiteServer -LogFile $logfile -KeyName 'SOFTWARE\\Microsoft\\SMS\\SQL Server' -KeyValue 'Service Name'
+    $SQLPort   = Get-RegistryValue -ComputerName $SMSSiteServer -LogFile $logfile -KeyName 'SOFTWARE\\Microsoft\\SMS\\SQL Server\\Site System SQL Account' -KeyValue 'Port'
+    $SQLDBName = Get-RegistryValue -ComputerName $SMSSiteServer -LogFile $logfile -KeyName 'SOFTWARE\\Microsoft\\SMS\\SQL Server\\Site System SQL Account' -KeyValue 'Database Name'
     
 	# parse when finding default instance vs named instance
     if ($SQLDBName.IndexOf('\') -ge 0) {
         $SQLDBName = $SQLDBName.Split("\")[1]
     }
     
-	Write-Log -message ("SQLServerName: $SQLServerName") -logfile $logfile
-	Write-Log -message ("SQLServiceName: $SQLServiceName") -logfile $logfile
-	Write-Log -message ("SQLPort: $SQLPort") -logfile $logfile
-	Write-Log -message ("SQLDBName: $SQLDBName") -logfile $logfile
+	Write-Log -Message ("SQLServerName: $SQLServerName") -LogFile $logfile
+	Write-Log -Message ("SQLServiceName: $SQLServiceName") -LogFile $logfile
+	Write-Log -Message ("SQLPort: $SQLPort") -LogFile $logfile
+	Write-Log -Message ("SQLDBName: $SQLDBName") -LogFile $logfile
 
 	$arrServers = @()
-	$WMIServers = Get-RFLWMIObject -query "select distinct NetworkOSPath from SMS_SCI_SysResUse where NetworkOSPath not like '%.microsoft.com' and Type in (1,2,4,8)" -computerName $smsprovider -namespace "root\sms\site_$SiteCodeNamespace" -logfile $logfile
+	$WMIServers = Get-RFLWMIObject -Query "select distinct NetworkOSPath from SMS_SCI_SysResUse where NetworkOSPath not like '%.microsoft.com' and Type in (1,2,4,8)" -ComputerName $smsprovider -NameSpace "root\sms\site_$SiteCodeNamespace" -LogFile $logfile
 	foreach ($WMIServer in $WMIServers) { $arrServers += $WMIServer.NetworkOSPath -replace '\\', '' }
-	Write-Log -message ("Servers discovered: " + $arrServers -join(", ")) -logfile $logfile
+	Write-Log -Message ("Servers discovered: " + $arrServers -join(", ")) -LogFile $logfile
 
 	$Fields = @("TableName", "XMLFile")
-	$ReportTable = Create-DataTable -tablename $tableName -fields $Fields
+	$ReportTable = Create-DataTable -TableName $tableName -Fields $Fields
 
 	$Fields = @("SiteServer", "SQLServer","DBName","SiteCode","NumberOfDays","HealthCheckFileName")
-	$ConfigTable = Create-DataTable -tablename $tableName -fields $Fields
+	$ConfigTable = Create-DataTable -TableName $tableName -Fields $Fields
 
 	$row = $ConfigTable.NewRow()
-	$row.SiteServer = $SMSSiteServer
-	$row.SQLServer = $SQLServerName
-	$row.DBName = $SQLDBName
-	$row.SiteCode = $SiteCodeNamespace
+	$row.SiteServer   = $SMSSiteServer
+	$row.SQLServer    = $SQLServerName
+	$row.DBName       = $SQLDBName
+	$row.SiteCode     = $SiteCodeNamespace
 	$row.NumberOfDays = [System.Convert]::ToInt32($NumberOfDays)
 	$row.HealthCheckFileName = $HealthCheckFileName
 
@@ -1089,7 +1112,7 @@ try {
 	$sqlConn = Get-SQLServerConnection -SQLServer "$SQLServerName,$SQLPort" -DBName $SQLDBName
 	$sqlConn.Open()
 
-	if ($healthcheckdebug -eq $true) { Write-Log -message ("SQL Query: Creating Functions") -logfile $logfile }
+	if ($healthcheckdebug -eq $true) { Write-Log -Message ("SQL Query: Creating Functions") -LogFile $logfile }
 	$functionsSQLQuery = @"
 CREATE FUNCTION [fn_CM12R2HealthCheck_ScheduleToMinutes](@Input varchar(16))
 RETURNS bigint
@@ -1176,46 +1199,46 @@ END
 	$SqlCommand = $sqlConn.CreateCommand()
 
 	$executionquery = "select distinct st.SiteCode, (select top 1 srl2.ServerName from v_SystemResourceList srl2 where srl2.RoleName = 'SMS Provider' and srl2.SiteCode = st.SiteCode) as ServerName from v_Site st"
-	if ($healthcheckdebug -eq $true) { Write-Log -message ("SQL Query: $executionquery") -logfile $logfile }
+	if ($healthcheckdebug -eq $true) { Write-Log -Message ("SQL Query: $executionquery") -LogFile $logfile }
 
 	$SqlCommand.CommandTimeOut = 0
 	$SqlCommand.CommandText = $executionquery
 
 	$DataAdapter = New-Object System.Data.SqlClient.SqlDataAdapter $SqlCommand
-	$dataset = New-Object System.Data.Dataset
+	$dataset     = New-Object System.Data.Dataset
 	$DataAdapter.Fill($dataset) | Out-Null
 	foreach($row in $dataset.Tables[0].Rows) { $arrSites += "$($row.SiteCode)@$($row.ServerName)" }	
-	Write-Log -message ("Sites discovered: " + $arrSites -join(", ")) -logfile $logfile
+	Write-Log -Message ("Sites discovered: " + $arrSites -join(", ")) -LogFile $logfile
 	$SqlCommand = $null		
 
 	##section 1 = information that needs be collected against each site
 	foreach ($Site in $arrSites) {
-		$arrSiteInfo = $Site.split("@")
-		$PortInformation = Get-RFLWmiObject -query "select * from SMS_SCI_Component where FileType=2 and ItemName='SMS_MP_CONTROL_MANAGER|SMS Management Point' and ItemType='Component' and SiteCode='$($arrSiteInfo[0])'" -namespace "Root\SMS\Site_$SiteCodeNamespace" -computerName $smsprovider -logfile $logfile
+		$arrSiteInfo = $Site.Split("@")
+		$PortInformation = Get-RFLWmiObject -query "select * from SMS_SCI_Component where FileType=2 and ItemName='SMS_MP_CONTROL_MANAGER|SMS Management Point' and ItemType='Component' and SiteCode='$($arrSiteInfo[0])'" -NameSpace "Root\SMS\Site_$SiteCodeNamespace" -ComputerName $smsprovider -LogFile $logfile
 		foreach ($portinfo in $PortInformation) {
-			$HTTPport = ($portinfo.Props | where {$_.PropertyName -eq "IISPortsList"}).Value1
-			$HTTPSport = ($portinfo.Props | where {$_.PropertyName -eq "IISSSLPortsList"}).Value1
+			$HTTPport  = ($portinfo.Props | Where-Object {$_.PropertyName -eq "IISPortsList"}).Value1
+			$HTTPSport = ($portinfo.Props | Where-Object {$_.PropertyName -eq "IISSSLPortsList"}).Value1
 		}
-		ReportSection -HealthCheckXML $HealthCheckXML -section '1' -sqlConn $sqlConn -siteCode $arrSiteInfo[0] -NumberOfDays $NumberOfDays -servername $arrSiteInfo[1] -ReportTable $ReportTable -logfile $logfile 
+		ReportSection -HealthCheckXML $HealthCheckXML -Section '1' -sqlConn $sqlConn -SiteCode $arrSiteInfo[0] -NumberOfDays $NumberOfDays -ServerName $arrSiteInfo[1] -ReportTable $ReportTable -LogFile $logfile 
 	}
 	
 	##section 2 = information that needs be collected against each computer. should not be site specific. query will run only against the higher site in the hierarchy
     foreach ($server in $arrServers) { 
-        ReportSection -HealthCheckXML $HealthCheckXML -section '2' -sqlConn $sqlConn -siteCode $SiteCodeNamespace -NumberOfDays $NumberOfDays -servername $server -ReportTable $ReportTable -logfile $logfile 
+        ReportSection -HealthCheckXML $HealthCheckXML -Section '2' -sqlConn $sqlConn -siteCode $SiteCodeNamespace -NumberOfDays $NumberOfDays -ServerName $server -ReportTable $ReportTable -LogFile $logfile 
     }
 	
 	##section 3 = database analisys information, running on all sql servers in the hierarchy. should not be site specific as it connects to the "master" database
-    $DBServers = Get-RFLWMIObject -query "select distinct NetworkOSPath from SMS_SCI_SysResUse where RoleName = 'SMS SQL Server'" -computerName $smsprovider -namespace "root\sms\site_$SiteCodeNamespace" -logfile $logfile
+    $DBServers = Get-RFLWMIObject -Query "select distinct NetworkOSPath from SMS_SCI_SysResUse where RoleName = 'SMS SQL Server'" -ComputerName $smsprovider -NameSpace "root\sms\site_$SiteCodeNamespace" -LogFile $logfile
     foreach ($DB in $DBServers) { 
 		$DBServerName = $DB.NetworkOSPath.Replace('\',"") 
-		Write-Log -message ("Analysing SQLServer: $DBServerName") -logfile $logfile
+		Write-Log -Message ("Analysing SQLServer: $DBServerName") -LogFile $logfile
 		if ($SQLServerName.ToLower() -eq $DBServerName.ToLower()) { $tmpConnection = $sqlConn }
 		else {
 			$tmpConnection = Get-SQLServerConnection -SQLServer "$DBServerName,$SQLPort" -DBName "master"
     		$tmpConnection.Open()
 		}
 		try {
-	    	ReportSection -HealthCheckXML $HealthCheckXML -section '3' -sqlConn $tmpConnection -siteCode $SiteCodeNamespace -NumberOfDays $NumberOfDays -servername $DBServerName -ReportTable $ReportTable -logfile $logfile
+	    	ReportSection -HealthCheckXML $HealthCheckXML -Section '3' -sqlConn $tmpConnection -SiteCode $SiteCodeNamespace -NumberOfDays $NumberOfDays -ServerName $DBServerName -ReportTable $ReportTable -LogFile $logfile
 		}
 		finally {
 			if ($SQLServerName.ToLower() -ne $DBServerName.ToLower()) { $tmpConnection.Close()  }
@@ -1223,30 +1246,30 @@ END
 	}
 
     ##Section 4 = Database analysis against whole SCCM infrastructure, query will run only against top SQL Server
-	ReportSection -HealthCheckXML $HealthCheckXML -section '4' -sqlConn $sqlConn -siteCode $SiteCodeNamespace -NumberOfDays $NumberOfDays -ReportTable $ReportTable -logfile $logfile
+	ReportSection -HealthCheckXML $HealthCheckXML -Section '4' -sqlConn $sqlConn -SiteCode $SiteCodeNamespace -NumberOfDays $NumberOfDays -ReportTable $ReportTable -LogFile $logfile
 
     ##Section 5 = summary information against whole SCCM infrastructure. query will run only against the higher site in the hierarchy
-	ReportSection -HealthCheckXML $HealthCheckXML -section '5' -sqlConn $sqlConn -siteCode $SiteCodeNamespace -NumberOfDays $NumberOfDays -ReportTable $ReportTable -logfile $logfile
+	ReportSection -HealthCheckXML $HealthCheckXML -Section '5' -sqlConn $sqlConn -SiteCode $SiteCodeNamespace -NumberOfDays $NumberOfDays -ReportTable $ReportTable -LogFile $logfile
 	
 	##Section 5 = detailed information against whole SCCM infrastructure. query will run only against the higher site in the hierarchy
-	ReportSection -HealthCheckXML $HealthCheckXML -section '5' -sqlConn $sqlConn -siteCode $SiteCodeNamespace -NumberOfDays $NumberOfDays -ReportTable $ReportTable -detailed $true -logfile $logfile
+	ReportSection -HealthCheckXML $HealthCheckXML -Section '5' -sqlConn $sqlConn -SiteCode $SiteCodeNamespace -NumberOfDays $NumberOfDays -ReportTable $ReportTable -Detailed $true -LogFile $logfile
 
 	##Section 6 = troubleshooting information
-	ReportSection -HealthCheckXML $HealthCheckXML -section '6' -sqlConn $sqlConn -siteCode $SiteCodeNamespace -NumberOfDays $NumberOfDays -ReportTable $ReportTable -logfile $logfile
+	ReportSection -HealthCheckXML $HealthCheckXML -Section '6' -sqlConn $sqlConn -SiteCode $SiteCodeNamespace -NumberOfDays $NumberOfDays -ReportTable $ReportTable -LogFile $logfile
 }
 catch {
-	Write-Log -message "Something bad happen that I don't know about" -severity 3 -LogFile $logfile
-	Write-Log -message "The following error happen, no futher action taken" -Severity 3 -LogFile $logfile
+	Write-Log -Message "Something bad happen that I don't know about" -Sverity 3 -LogFile $logfile
+	Write-Log -Message "The following error happen, no futher action taken" -Severity 3 -LogFile $logfile
 	$errorMessage = $Error[0].Exception.Message
 	$errorCode = "0x{0:X}" -f $Error[0].Exception.ErrorCode
-	Write-Log -Message "Error $errorCode : $errorMessage" -logfile $logfile -Severity 3
-	Write-Log -Message "Full Error Message Error $($error[0].ToString())" -logfile $logfile -Severity 3
+	Write-Log -Message "Error $errorCode : $errorMessage" -LogFile $logfile -Severity 3
+	Write-Log -Message "Full Error Message Error $($error[0].ToString())" -LogFile $logfile -Severity 3
 	$Error.Clear()
 }
 finally {
     #close sql connection
     if ($sqlConn -ne $null) { 		
-		if ($healthcheckdebug -eq $true) { Write-Log -message ("SQL Query: Deleting Functions") -logfile $logfile }
+		if ($healthcheckdebug -eq $true) { Write-Log -Message ("SQL Query: Deleting Functions") -LogFile $logfile }
 		$functionsSQLQuery = @"
 IF OBJECT_ID (N'fn_CM12R2HealthCheck_ScheduleToMinutes', N'FN') IS NOT NULL
 	DROP FUNCTION fn_CM12R2HealthCheck_ScheduleToMinutes;
@@ -1263,14 +1286,14 @@ IF OBJECT_ID (N'fn_CM12R2HealthCheck_ScheduleToMinutes', N'FN') IS NOT NULL
 		$SqlCommand = $null		
 		$sqlConn.Close() 
 	}
-	if ($ReportTable -ne $null) { , $ReportTable | Export-Clixml -Path ($reportFolder + 'report.xml') }
+	if ($ReportTable -ne $null) { , $ReportTable | Export-CliXml -Path ($reportFolder + 'report.xml') }
 
 	if ($bLogValidation -eq $false) {
 		Write-Host "Ending HealthCheck CollectData"
         Write-Host "==========" 
 	}
 	else {
-        Write-Log -message "Ending HealthCheck CollectData" -logfile $logfile
-        Write-Log -message "==========" -logfile $logfile
+        Write-Log -Message "Ending HealthCheck CollectData" -LogFile $logfile
+        Write-Log -Message "==========" -LogFile $logfile
 	}
 }
