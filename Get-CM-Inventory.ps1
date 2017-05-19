@@ -42,19 +42,19 @@
     Version 0.4 - Raphael Perez - 04/02/2016
         - Fixed issue when executing on a Windows 10 machine
     Version 0.5 - David Stein (4/11/2017)
-        - Added support for MS Word 2016
         - Changed "cm12R2healthCheck.xml" to "cmhealthcheck.xml"
         - Detailed is now a [switch] not a [boolean]
-        - Added params for CoverPage, Author, CustomerName, etc.
-        - Bugfixes for Word document builtin properties updates
         - Minor bugfixes throughout
     Version 0.6 - David Stein (4/17/2017)
         - Bugfixes
-	Version 0.61 - David Stein (5/16/2017)
-		- Added -NoHotFix option
+    Version 0.61 - David Stein (5/16/2017)
+	- Added -NoHotFix option
 	- Removed Test-PowerShell function dependency
 	- Incremented version from 0.51 to 0.6 for consistency
-
+    Version 0.62 - David Stein (5/19/2017)
+        - Fixed bug with -NoHotFix [switch] typo
+	- Added pipeline support for SmsProvider parameter
+	
     Thanks to:
     Base script (the hardest part) created by Rafael Perez (www.rflsystems.co.uk)
     Word functions copied from Carl Webster (www.carlwebster.com)
@@ -83,7 +83,11 @@
 
 [CmdletBinding(ConfirmImpact="Low")]
 param (
-    [Parameter(Mandatory = $true, HelpMessage = "Enter the SMS Provider computer name")] 
+    [Parameter(
+    	Mandatory = $true, 
+	HelpMessage = "Enter the SMS Provider computer name",
+	ValueFromPipeline=$True
+    )] 
         [ValidateNotNullOrEmpty()]
         [string] $SmsProvider,
     [Parameter(Mandatory = $false, HelpMessage = "Number of Days for HealthCheck")] 
@@ -93,8 +97,9 @@ param (
 	[Parameter(Mandatory = $false, HelpMessage = "Overwrite existing report?")] 
         [switch] $Overwrite,
 	[Parameter(Mandatory=$False, HelpMessage="Skip hotfix inventory")]
-		[swtich] $NoHotfix
+	[switch] $NoHotfix
 )
+$ScriptVersion = "0.62"
 $HealthcheckDebug = $True
 $FormatEnumerationLimit = -1
 $currentFolder = $PWD.Path
@@ -990,6 +995,7 @@ function Test-Admin {
 } 
 
 #endregion FUNCTIONS
+Write-Host "script version: $ScriptVersion"
 
 try {
 	if (-not (Test-Admin)) {
@@ -1054,6 +1060,7 @@ try {
  
     Write-Log -Message "==========" -LogFile $logfile -ShowMsg $false
     Write-Log -Message "Starting HealthCheck" -LogFile $logfile
+    Write-Log -Message "Script version: $ScriptVersion" -LogFile $logfile
     Write-Log -Message "Running Powershell version $($PSVersionTable.psversion.Major)" -LogFile $logfile
     Write-Log -Message "Running Powershell 64 bits" -LogFile $logfile
     Write-Log -Message "SMS Provider: $smsprovider" -LogFile $logfile
