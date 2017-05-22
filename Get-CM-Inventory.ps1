@@ -34,33 +34,14 @@
     Can save significant runtime
 
 .NOTES
-    Version 0.1 - Raphael Perez - 24/10/2013 - Initial Script
-    Version 0.2 - Raphael Perez - 05/11/2014
-        - Added Get-MessageInformation and Get-MessageSolution
-    Version 0.3 - Raphael Perez - 22/06/2015
-        - Added ReportSection
-    Version 0.4 - Raphael Perez - 04/02/2016
-        - Fixed issue when executing on a Windows 10 machine
-    Version 0.5 - David Stein (4/11/2017)
-        - Changed "cm12R2healthCheck.xml" to "cmhealthcheck.xml"
-        - Detailed is now a [switch] not a [boolean]
-        - Minor bugfixes throughout
-    Version 0.6 - David Stein (4/17/2017)
-        - Bugfixes
-    Version 0.61 - David Stein (5/16/2017)
-	- Added -NoHotFix option
-	- Removed Test-PowerShell function dependency
-	- Incremented version from 0.51 to 0.6 for consistency
-    Version 0.62 - David Stein (5/19/2017)
-        - Fixed bug with -NoHotFix [switch] typo
-	- Added pipeline support for SmsProvider parameter
-	
-    Thanks to:
+	See GitHub Wiki for version updates and details
+
+	Thanks to:
     Base script (the hardest part) created by Rafael Perez (www.rflsystems.co.uk)
     Word functions copied from Carl Webster (www.carlwebster.com)
     Word functions copied from David O'Brien (www.david-obrien.net/2013/06/20/huge-powershell-inventory-script-for-configmgr-2012/)
 
-    NOTE: This script was tested on SCCM 2012 R2, 1606, 1610, and 1702 Primary sites
+    NOTE: This script was tested on SCCM from 2012 R2 up to 1703 Primary and CAS hierarchy environments
 
     Support: Database name must be CM_<SITECODE> (you need to adapt the queries if not this format)
 
@@ -84,24 +65,25 @@
 [CmdletBinding(ConfirmImpact="Low")]
 param (
     [Parameter(
-    	Mandatory = $true, 
-	HelpMessage = "Enter the SMS Provider computer name",
-	ValueFromPipeline=$True
+    	Mandatory = $True, 
+		HelpMessage = "Enter the SMS Provider computer name",
+		ValueFromPipeline=$True
     )] 
-        [ValidateNotNullOrEmpty()]
-        [string] $SmsProvider,
-    [Parameter(Mandatory = $false, HelpMessage = "Number of Days for HealthCheck")] 
-        [int] $NumberofDays = 7,
-	[Parameter(Mandatory = $false, HelpMessage = "HealthCheck query file name")] 
-        [string] $HealthcheckFilename = 'cmhealthcheck.xml',
-	[Parameter(Mandatory = $false, HelpMessage = "Overwrite existing report?")] 
-        [switch] $Overwrite,
+		[ValidateNotNullOrEmpty()]
+		[string] $SmsProvider,
+    [Parameter(Mandatory = $False, HelpMessage = "Number of Days for HealthCheck")] 
+		[int] $NumberofDays = 7,
+	[Parameter(Mandatory = $False, HelpMessage = "HealthCheck query file name")] 
+		[string] $HealthcheckFilename = 'cmhealthcheck.xml',
+	[Parameter(Mandatory = $False, HelpMessage = "Overwrite existing report?")] 
+		[switch] $Overwrite,
 	[Parameter(Mandatory=$False, HelpMessage="Skip hotfix inventory")]
-	[switch] $NoHotfix
+		[switch] $NoHotfix
 )
-$ScriptVersion = "0.62"
+$ScriptVersion = "0.64"
 $HealthcheckDebug = $True
 $FormatEnumerationLimit = -1
+$startTime = Get-Date
 $currentFolder = $PWD.Path
 if ($currentFolder.substring($currentFolder.Length-1) -ne '\') { $currentFolder+= '\' }
 
@@ -163,8 +145,8 @@ Function Write-Log {
     $Date2 = Get-Date -Format "MM-dd-yyyy"
     $type=1
     
-    if (($logfile -ne $null) -and ($logfile -ne '')) {    
-        "<![LOG[$Message]LOG]!><time=`"$date+$($TimeZoneBias.Bias)`" date=`"$date2`" component=`"$component`" context=`"`" type=`"$severity`" thread=`"`" file=`"`">" | Out-File -FilePath $logfile -Append -NoClobber -Encoding default
+    if (($logfile -ne $null) -and ($logfile -ne '')) {
+		"<![LOG[$Message]LOG]!><time=`"$date+$($TimeZoneBias.Bias)`" date=`"$date2`" component=`"$component`" context=`"`" type=`"$severity`" thread=`"`" file=`"`">" | Out-File -FilePath $logfile -Append -NoClobber -Encoding Default
     }
     
     if ($showmsg -eq $true) {
@@ -181,17 +163,21 @@ Function Test-Folder {
         [String] $Path,
         [bool] $Create = $true
     )
-    if (Test-Path -Path $Path) { return $true }
+    if (Test-Path -Path $Path) {
+		return $true
+	}
     elseif ($Create -eq $true) {
         try {
             New-Item ($Path) -Type Directory -Force | Out-Null
-            Write-Output $true        	
+            Write-Output $true
         }
         catch {
             Write-Output $false
-        }        
+        }
     }
-    else { Write-Output $false }
+    else {
+		Write-Output $false
+	}
 }
 
 Function Get-RegistryValue {
@@ -208,7 +194,7 @@ Function Get-RegistryValue {
     try {
         $Reg = [Microsoft.Win32.RegistryKey]::OpenRemoteBaseKey($AccessType, $ComputerName)
         $RegKey= $Reg.OpenSubKey($keyname)
-	    if ($RegKey -ne $null) { 
+	    if ($RegKey -ne $null) {
 		    try { $return = $RegKey.GetValue($keyvalue) }
 		    catch { $return = $null }
 	    }
@@ -219,7 +205,7 @@ Function Get-RegistryValue {
         $return = "ERROR: Unknown"
         $Error.Clear()
     }
-    Write-Output $return    
+    Write-Output $return
 }
 
 Function ReportSection {
@@ -235,14 +221,14 @@ Function ReportSection {
 		[boolean] $Detailed = $false
 	)
 	
-	Write-Log -Message "Starting Secion $section with detailed as $($detailed.ToString())" -LogFile $logfile
+	Write-Log -Message "**** Starting Section $Section with detailed as $($detailed.ToString())" -LogFile $logfile
 	
 	foreach ($healthCheck in $HealthCheckXML.dtsHealthCheck.HealthCheck) {
         if ($healthCheck.IsTextOnly.ToLower() -eq 'true') { continue }
         if ($healthCheck.IsActive.ToLower() -ne 'true') { continue }
 		if ($healthCheck.Section.ToLower() -ne $Section) { continue }
 		
-		$sqlquery = $healthCheck.SqlQuery
+		$sqlquery  = $healthCheck.SqlQuery
         $tablename = (Set-ReplaceString -Value $healthCheck.XMLFile -SiteCode $SiteCode -NumberOfDays $NumberOfDays -ServerName $servername)
         $xmlTableName = $healthCheck.XMLFile
 
@@ -265,7 +251,6 @@ Function ReportSection {
                 $sqlquery = $sqlquery -replace "select distinct", "select"
                 $sqlquery = $sqlquery -replace "select", "select distinct"
             }
-            
         }
     	$filename = $reportFolder + $tablename + '.xml'
 		
@@ -274,8 +259,9 @@ Function ReportSection {
     	$row.XMLFile = $tablename + ".xml"
     	$ReportTable.Rows.Add($row)
 		
-		Write-Log -Message ("$tablename Information...Starting") -LogFile $logfile
-		Write-Log -Message ("Type: $($healthCheck.querytype)") -LogFile $logfile
+		Write-Log -Message ("Section... $Section") -LogFile $logfile
+		Write-Log -Message ("Table..... $TableName - Information...Starting") -LogFile $logfile
+		Write-Log -Message ("Type...... $($healthCheck.querytype)") -LogFile $logfile
 		
 		try {
 			switch ($healthCheck.querytype.ToLower()) {
@@ -298,13 +284,13 @@ Function ReportSection {
 		catch {
 			$errorMessage = $Error[0].Exception.Message
 			$errorCode = "0x{0:X}" -f $Error[0].Exception.ErrorCode
-			Write-Log -Message "The following error happen" -Severity 3 -LogFile $logfile
+			Write-Log -Message "ERROR/EXCEPTION: The following error occurred..." -Severity 3 -LogFile $logfile
 			Write-Log -Message "Error $errorCode : $errorMessage connecting to $servername" -LogFile $logfile -Severity 3
 			$Error.Clear()
 		}
 		Write-Log -Message ("$tablename Information...Done") -LogFile $logfile
     }
-	Write-Log -Message "End Secion $section" -LogFile $logfile
+	Write-Log -Message "End Section $section" -LogFile $logfile
 }
 
 Function Set-FormatedValue {
@@ -391,25 +377,39 @@ Function Set-FormatedValue {
 
 Function Get-SQLData {
     param (
-	    $sqlConn,
-	    [string] $SQLQuery,
-	    [string] $FileName,
-	    [string] $TableName,
-	    [string] $SiteCode,
-	    [int] $NumberOfDays,
-	    [string] $LogFile,
-		[string] $ServerName,
-		[bool] $ContinueOnError = $true,
-		$HealthCheck,
-        $Section,
-        [boolean] $Detailed = $false
+	    [parameter(Mandatory=$True)]
+			$sqlConn,
+	    [parameter(Mandatory=$True)]
+			[ValidateNotNullOrEmpty()]
+			[string] $SQLQuery,
+	    [parameter(Mandatory=$False)]
+			[string] $FileName,
+	    [parameter(Mandatory=$False)]
+			[string] $TableName,
+	    [parameter(Mandatory=$False)]
+			[string] $SiteCode,
+	    [parameter(Mandatory=$False)]
+			[int] $NumberOfDays,
+	    [parameter(Mandatory=$False)]
+			[string] $LogFile,
+		[parameter(Mandatory=$False)]
+			[string] $ServerName,
+		[parameter(Mandatory=$False)]
+			[bool] $ContinueOnError = $true,
+		[parameter(Mandatory=$False)]
+			$HealthCheck,
+        [parameter(Mandatory=$False)]
+			$Section,
+        [parameter(Mandatory=$False)]
+			[boolean] $Detailed = $false
 	)
     try {
         $SqlCommand = $sqlConn.CreateCommand()
-		$logQuery = Set-ReplaceString -value $SQLQuery -sitecode $SiteCode -NumberOfDays $NumberOfDays -servername $servername
-		$executionquery = Set-ReplaceString -value $SQLQuery -sitecode $SiteCode -NumberOfDays $NumberOfDays -servername $servername -space $false
+		$logQuery = Set-ReplaceString -value $SQLQuery -SiteCode $SiteCode -NumberOfDays $NumberOfDays -ServerName $ServerName
+		$executionquery = Set-ReplaceString -value $SQLQuery -SiteCode $SiteCode -NumberOfDays $NumberOfDays -ServerName $ServerName -space $false
 		
         if ($healthcheckdebug -eq $true) { 
+			Write-Log -Message "-----------------------------------------------------------" -LogFile $logfile
             Write-Log -Message ("SQL Query: $executionquery") -LogFile $logfile -ShowMsg $false
 		    Write-Log -Message ("SQL Query: $logQuery") 
         } 
@@ -421,11 +421,15 @@ Function Get-SQLData {
         $DataAdapter.Fill($dataset)
 		
 		if (($dataset.Tables.Count -eq 0) -or ($dataset.Tables[0].Rows.Count -eq 0)) { 
-			if ($healthcheckdebug -eq $true) { Write-Log -Message ("SQL Query returned 0 records") -LogFile $logfile }
+			if ($healthcheckdebug -eq $true) { 
+				Write-Log -Message ("SQL Query returned 0 records") -LogFile $logfile 
+			}
 			Write-Log -Message ("Table $tablename is empty skipping writting file $filename ...") -LogFile $logfile -Severity 2 
 		}
 		else {
-			if ($healthcheckdebug -eq $true) { Write-Log -Message ("SQL Query returned $($dataset.Tables[0].Rows.Count) records") -LogFile $logfile }
+			if ($healthcheckdebug -eq $true) { 
+				Write-Log -Message ("SQL Query returned $($dataset.Tables[0].Rows.Count) records") -LogFile $logfile 
+			}
 			foreach ($field in $healthCheck.Fields.Field) {
                 if ($section -eq 5) {
                     if (($detailed -eq $true) -and ($field.groupby -notin ('1','2'))) { continue }
@@ -433,21 +437,29 @@ Function Get-SQLData {
                 }
 				if ($field.format -ne "") {
 					foreach ($row in $dataset.Tables[0].Rows) {
-						$row.$($field.FieldName) = Set-FormatedValue -value $row.$($field.FieldName) -format $field.format -sitecode $SiteCode
+						$row.$($field.FieldName) = Set-FormatedValue -Value $row.$($field.FieldName) -Format $field.format -SiteCode $SiteCode
 					}
 				}
-			}				
+			}
+			Write-Log -Message "Exporting xml data to: $filename"
         	, $dataset.Tables[0] | Export-CliXml -Path $filename
 		}
     }
     catch {
         $errorMessage = $Error[0].Exception.Message
         $errorCode = "0x{0:X}" -f $Error[0].Exception.ErrorCode
-        if ($continueonerror -eq $false) { Write-Log -message "The following error happen, no futher action taken" -Severity 3 -LogFile $logfile }
-        else { Write-Log -message "The following error happen" -Severity 3 -LogFile $logfile }
-        Write-Log -message "Error $errorCode : $errorMessage connecting to $ComputerName" -LogFile $logfile -Severity 3
+        if ($continueonerror -eq $false) { 
+			Write-Log -Message "ERROR/EXCEPTION: The following error occurred (stop)." -Severity 3 -LogFile $logfile 
+		}
+        else { 
+			Write-Log -Message "ERROR/EXCEPTION: The following error occurred (continue)." -Severity 3 -LogFile $logfile 
+		}
+        Write-Log -Message "Error $errorCode : $errorMessage connecting to $ServerName" -LogFile $logfile -Severity 3
 	    $Error.Clear()
-        if ($continueonerror -eq $false) { Throw "Error $errorCode : $errorMessage connecting to $ComputerName" }
+		Write-Log -Message "Unable to update file: $filename" -LogFile $logfile -Severity 3
+        if ($continueonerror -eq $false) {
+			Throw "Error $errorCode : $errorMessage connecting to $ServerName"
+		}
 	}
 }
 
@@ -659,12 +671,12 @@ function Write-RolesInstalled {
     foreach ($WMIServer in $WMISMSListRoles) { $SMSListRoles += $WMIServer.RoleName }
     $DPProperties = Get-RFLWMIObject -Query "select * from SMS_SCI_SysResUse where RoleName = 'SMS Distribution Point' and NetworkOSPath = '\\\\$Servername' and SiteCode = '$SiteCode'" -computerName $smsprovider -namespace "root\sms\site_$SiteCodeNamespace" -logfile $logfile
   
- 	$Fields = @("SiteServer", "IIS", "SQLServer", "DP", "PXE", "MultiCast", "PreStaged", "MP", "FSP", "SSRS", "EP", "SUP", "AI", "AWS", "PWS", "SMP", "Console", "Client")
+ 	$Fields = @("SiteServer", "IIS", "SQLServer", "DP", "PXE", "MultiCast", "PreStaged", "MP", "FSP", "SSRS", "EP", "SUP", "AI", "AWS", "PWS", "SMP", "Console", "Client", "CPC", "DWP", "DMP")
 	$RolesInstalledTable = Create-DataTable -TableName $tableName -Fields $Fields
 	
 	$row = $RolesInstalledTable.NewRow()
 	$row.SiteServer = ($SMSListRoles -contains 'SMS Site Server').ToString()
-	$row.SQLServer = ($SMSListRoles -contains 'SMS SQL Server').ToString()
+	$row.SQLServer  = ($SMSListRoles -contains 'SMS SQL Server').ToString()
 	$row.DP = ($SMSListRoles -contains 'SMS Distribution Point').ToString()
 	if ($DPProperties -eq $null) {
 		$row.PXE = "False"
@@ -685,6 +697,25 @@ function Write-RolesInstalled {
 	$row.AWS  = ($SMSListRoles -contains 'SMS Application Web Service').ToString()
 	$row.PWS  = ($SMSListRoles -contains 'SMS Portal Web Site').ToString()
 	$row.SMP  = ($SMSListRoles -contains 'SMS State Migration Point').ToString()
+	
+	# added in 0.64
+	$row.CPC  = ($SMSListRoles -contains 'SMS Cloud Proxy Connector').ToString()
+	$row.DWP  = ($SMSListRoles -contains 'Data Warehouse Service Point').ToString()
+	$row.DMP  = ($SMSListRoles -contains 'SMS Dmp Connector').ToString()
+
+	# other roles as of build 1702
+	<#
+	SMS Device Management Point
+	SMS System Health Validator
+	SMS Multicast Service Point
+	SMS AMT Service Point
+	SMS Enrollment Server
+	SMS Enrollment Web Site
+	SMS Notification Server
+	SMS Certificate Registration Point
+	SMS DM Enrollment Service
+	#>
+	
 	$row.Console = (Test-RegistryExist -ComputerName $servername -Logfile $logfile -KeyName 'SOFTWARE\\Wow6432Node\\Microsoft\\ConfigMgr10\\AdminUI').ToString()
 	$row.Client  = (Test-RegistryExist -ComputerName $servername -Logfile $logfile -KeyName 'SOFTWARE\\Microsoft\\CCM\\CCMExec').ToString()
 	$row.IIS     = ((Get-RegistryValue -ComputerName $server -Logfile $logfile -KeyName 'SOFTWARE\\Microsoft\\InetStp' -KeyValue 'InstallPath') -ne $null).ToString()
@@ -767,9 +798,9 @@ Function Write-HotfixStatus {
 		[string] $ServerName,
 		$ContinueOnError = $true
     )
-    Write-Log -Message "Connecting to server $servername" -LogFile $logfile
+    Write-Log -Message "Connecting to server $ServerName" -LogFile $logfile
     try {         
-		$Session = [activator]::CreateInstance([type]::GetTypeFromProgID("Microsoft.Update.Session", $servername))
+		$Session = [activator]::CreateInstance([type]::GetTypeFromProgID("Microsoft.Update.Session", $ServerName))
 		$Searcher = $Session.CreateUpdateSearcher()
 		$historyCount = $Searcher.GetTotalHistoryCount()
 		$return = $Searcher.QueryHistory(0, $historyCount) 
@@ -779,7 +810,7 @@ Function Write-HotfixStatus {
 		$errorMessage = $Error[0].Exception.Message
 		$errorCode = "0x{0:X}" -f $Error[0].Exception.ErrorCode
 		Write-Log -Message "The following error happen" -severity 3 -logfile $logfile
-		Write-Log -Message "Error $errorCode : $errorMessage connecting to $ComputerName" -logfile $logfile -severity 3
+		Write-Log -Message "Error $errorCode : $errorMessage connecting to $ServerName" -logfile $logfile -severity 3
 		$Error.Clear()
 		return
     }
@@ -917,29 +948,43 @@ function Get-RFLWmiObject {
 		[bool] $ContinueOnError = $false
     )
     if ($query -ne '') { $class = $query }
-    if ($healthcheckdebug -eq $true) { Write-Log -Message ("WMI Query: \\$ComputerName\$Namespace, $class, filter: $filter") -LogFile $logfile }
 
-    if ($query -ne '') { $WMIObject = Get-WmiObject -Query $query -Namespace $Namespace -ComputerName $ComputerName -ErrorAction SilentlyContinue }
-    elseif ($filter -ne '') { $WMIObject = Get-WmiObject -Class $class -Filter $filter -Namespace $Namespace -ComputerName $ComputerName -ErrorAction SilentlyContinue }
-    else { $WMIObject = Get-WmiObject -Class $class -NameSpace $Namespace -ComputerName $ComputerName -ErrorAction SilentlyContinue }
+    if ($healthcheckdebug -eq $true) { 
+		Write-Log -Message "-----------------------------------------------------------" -LogFile $logfile
+		Write-Log -Message ("WMI Query: \\$ComputerName\$Namespace, $class, filter: $filter") -LogFile $logfile 
+	}
+
+    if ($query -ne '') { 
+		$WMIObject = Get-WmiObject -Query $query -Namespace $Namespace -ComputerName $ComputerName -ErrorAction SilentlyContinue 
+	}
+    elseif ($filter -ne '') { 
+		$WMIObject = Get-WmiObject -Class $class -Filter $filter -Namespace $Namespace -ComputerName $ComputerName -ErrorAction SilentlyContinue 
+	}
+    else { 
+		$WMIObject = Get-WmiObject -Class $class -NameSpace $Namespace -ComputerName $ComputerName -ErrorAction SilentlyContinue 
+	}
 
 	if ($WMIObject -eq $null) {
-        if ($healthcheckdebug -eq $true) { Write-Log -Message ("WMI Query returned 0) records") -LogFile $logfile -Severity 2 }
+        if ($healthcheckdebug -eq $true) { 
+			Write-Log -Message ("WMI Query returned 0) records") -LogFile $logfile -Severity 2 
+		}
 	}
 	else {
 		$i = 1
 		foreach ($obj in $wmiobj) { i++ }
-		if ($healthcheckdebug -eq $true) { Write-Log -Message ("WMI Query returned $($i) records") -LogFile $logfile }
+		if ($healthcheckdebug -eq $true) { 
+			Write-Log -Message ("WMI Query returned $($i) records") -LogFile $logfile 
+		}
 	}
 	
     if ($Error.Count -ne 0) {
 		$errorMessage = $Error[0].Exception.Message
 		$errorCode = "0x{0:X}" -f $Error[0].Exception.ErrorCode
-		if ($continueonerror -eq $false) { Write-Log -Message "The following error happen, no futher action taken" -Severity 3 -LogFile $logfile }
+		if ($ContinueOnError -eq $false) { Write-Log -Message "The following error happen, no futher action taken" -Severity 3 -LogFile $logfile }
 		else { Write-Log -Message "The following error happen" -Severity 3 -LogFile $logfile }
 		Write-Log -message "Error $errorCode : $errorMessage connecting to $ComputerName" -LogFile $logfile -Severity 3
 		$Error.Clear()
-		if ($continueonerror -eq $false) { Throw "Error $errorCode : $errorMessage connecting to $ComputerName" }
+		if ($ContinueOnError -eq $false) { Throw "Error $errorCode : $errorMessage connecting to $ComputerName" }
     }
     
     Write-Output $WMIObject
@@ -960,7 +1005,7 @@ Function Get-SQLServerConnection {
 		$errorMessage = $_.Exception.Message
 		$errorCode = "0x{0:X}" -f $_.Exception.ErrorCode
 		Write-Log -Message "The following error happen, no futher action taken" -Severity 3 -LogFile $logfile
-		Write-Log -Message "Error $errorCode : $errorMessage connecting to $ComputerName" -LogFile $logfile -Severity 3
+		Write-Log -Message "Error $errorCode : $errorMessage connecting to $SQLServer" -LogFile $logfile -Severity 3
 		$Error.Clear()
 		Throw "Error $errorCode : $errorMessage connecting to $SQLServer"
     }
@@ -999,12 +1044,12 @@ Write-Host "script version: $ScriptVersion"
 
 try {
 	if (-not (Test-Admin)) {
-		Write-Host "You are not running PowerShell as Administrator (run as Administrator), , no futher action taken" -ForegroundColor Red
+		Write-Host "You are not running PowerShell as Administrator (run as Administrator), no futher action taken" -ForegroundColor Red
 		Exit		
 	}
 
 	if (Test-Path -Path $reportFolder) {
-		if ($overwrite -eq $true) {
+		if ($Overwrite -eq $true) {
             Write-Verbose "removing previous output folder $($reportFolder)..."
             Remove-Item -Path "$($reportFolder)" -Recurse -Force
         }
@@ -1021,7 +1066,7 @@ try {
     	}
     	catch {
         	Write-Host "Unable to read/write file on $logFolder folder, no futher action taken" -ForegroundColor Red
-        	Exit    
+        	Exit
     	}
 	}
 	else {
@@ -1043,7 +1088,7 @@ try {
     	}
     	catch {
         	Write-Host "Unable to read/write file on $reportFolder folder, no futher action taken" -ForegroundColor Red
-        	Exit    
+        	Exit
     	}
 	}
 	else {
@@ -1053,18 +1098,22 @@ try {
 	
 	$poshversion = $PSVersionTable.PSVersion.Major
 	
-    if (!(Test-Powershell64bit)) {
-        Write-Log -Message "Powershell is not 64bit, no futher action taken" -Severity 3 -LogFile $logfile
-        Exit
-    }
- 
+	if (($Overwrite) -and (Test-Path $logfile)) {
+		Remove-Item $logfile -Force
+		Write-Log -Message "previous log file cleared via overwrite request" -LogFile $logfile
+	}
     Write-Log -Message "==========" -LogFile $logfile -ShowMsg $false
     Write-Log -Message "Starting HealthCheck" -LogFile $logfile
     Write-Log -Message "Script version: $ScriptVersion" -LogFile $logfile
     Write-Log -Message "Running Powershell version $($PSVersionTable.psversion.Major)" -LogFile $logfile
     Write-Log -Message "Running Powershell 64 bits" -LogFile $logfile
     Write-Log -Message "SMS Provider: $smsprovider" -LogFile $logfile
-        
+	if (!(Test-Powershell64bit)) {
+		Write-Log -Message "Powershell is not 64bit, no futher action taken" -Severity 3 -LogFile $logfile
+		Exit
+	}
+	Write-Log -Message "-----------------------------------" -LogFile $logfile
+   
     $WMISMSProvider = Get-RFLWmiObject -Class "SMS_ProviderLocation" -NameSpace "Root\SMS" -ComputerName $smsprovider -LogFile $logfile
     $SiteCodeNamespace = $WMISMSProvider.SiteCode
 	Write-Log -Message "Site Code: $SiteCodeNamespace" -LogFile $logfile
@@ -1216,7 +1265,7 @@ END
 	$DataAdapter.Fill($dataset) | Out-Null
 	foreach($row in $dataset.Tables[0].Rows) { $arrSites += "$($row.SiteCode)@$($row.ServerName)" }	
 	Write-Log -Message ("Sites discovered: " + $arrSites -join(", ")) -LogFile $logfile
-	$SqlCommand = $null		
+	$SqlCommand = $null
 
 	##section 1 = information that needs be collected against each site
 	foreach ($Site in $arrSites) {
@@ -1265,8 +1314,8 @@ END
 	ReportSection -HealthCheckXML $HealthCheckXML -Section '6' -sqlConn $sqlConn -SiteCode $SiteCodeNamespace -NumberOfDays $NumberOfDays -ReportTable $ReportTable -LogFile $logfile
 }
 catch {
-	Write-Log -Message "Something bad happen that I don't know about" -Sverity 3 -LogFile $logfile
-	Write-Log -Message "The following error happen, no futher action taken" -Severity 3 -LogFile $logfile
+	Write-Log -Message "ERROR/EXCEPTION: general unhandled exception" -Sverity 3 -LogFile $logfile
+	Write-Log -Message "The following error occurred, no futher action taken" -Severity 3 -LogFile $logfile
 	$errorMessage = $Error[0].Exception.Message
 	$errorCode = "0x{0:X}" -f $Error[0].Exception.ErrorCode
 	Write-Log -Message "Error $errorCode : $errorMessage" -LogFile $logfile -Severity 3
@@ -1275,7 +1324,7 @@ catch {
 }
 finally {
     #close sql connection
-    if ($sqlConn -ne $null) { 		
+    if ($sqlConn -ne $null) {
 		if ($healthcheckdebug -eq $true) { Write-Log -Message ("SQL Query: Deleting Functions") -LogFile $logfile }
 		$functionsSQLQuery = @"
 IF OBJECT_ID (N'fn_CM12R2HealthCheck_ScheduleToMinutes', N'FN') IS NOT NULL
@@ -1290,17 +1339,20 @@ IF OBJECT_ID (N'fn_CM12R2HealthCheck_ScheduleToMinutes', N'FN') IS NOT NULL
 		catch {
 			#
 		}
-		$SqlCommand = $null		
+		$SqlCommand = $null
 		$sqlConn.Close() 
 	}
 	if ($ReportTable -ne $null) { , $ReportTable | Export-CliXml -Path ($reportFolder + 'report.xml') }
 
 	if ($bLogValidation -eq $false) {
 		Write-Host "Ending HealthCheck CollectData"
-        Write-Host "==========" 
 	}
 	else {
         Write-Log -Message "Ending HealthCheck CollectData" -LogFile $logfile
-        Write-Log -Message "==========" -LogFile $logfile
 	}
 }
+$StopTime = Get-Date
+$RunSecs = ((New-TimeSpan -Start $StartTime -End $StopTime).TotalSeconds).ToString()
+$ts = [timespan]::FromSeconds($RunSecs)
+$RunTime = $ts.ToString("hh\:mm\:ss")
+Write-Log -Message "Processing completed. Total runtime: $RunTime (hh`:mm`:ss)" -LogFile $logfile
