@@ -30,3 +30,6 @@ Report generation script
 
 * Export-CM-HealthCheck.ps1 -ReportFolder "2017-05-22\cm01.contoso.com" -CustomerName "Contoso" -AuthorName "Frank Zappa" -CompanyName "Fubar Tech" -Overwrite -Verbose
 
+## Errata
+
+* Portions of the scripts in this repository are based on the work of Raphael Perez.  Authorship is indicated within each file.
