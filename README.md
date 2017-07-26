@@ -1,7 +1,7 @@
 # cm_healthcheck 0.64
 Scripts for auditing and reporting a Configuration Manager site environment.
 
-There are two (2) primary scripts: Get-CM-Inventory.ps1 and Export-CM-HealthCheck.ps1.
+There are two (2) primary scripts: Get-CM-Inventory.ps1 and Export-CM-HealthCheck.ps1.  Get-CM-Inventory.ps1 is usually executed on the CAS or standalone primary site server.  Export-CM-HealthCheck.ps1 is usually executed on a desktop computer which has Microsoft Office Word installed (2010, 2013, or 2016 required)
 
 ## Get-CM-Inventory.ps1
 
