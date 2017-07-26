@@ -203,7 +203,7 @@ Function Set-WordDocumentProperty {
 }
 
 Function ReportSection {
-    param (
+	param (
 		$HealthCheckXML,
         $Section,
 		$Detailed = $false,
