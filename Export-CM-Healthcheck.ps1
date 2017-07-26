@@ -37,26 +37,10 @@
     [switch] [optional] Overwrite existing report file if found
 
 .NOTES
-    Version 0.1 - Raphael Perez - 24/10/2013 - Initial Script
-    Version 0.2 - Raphael Perez - 05/11/2014
-        - Added Get-MessageInformation and Get-MessageSolution
-    Version 0.3 - Raphael Perez - 22/06/2015
-        - Added ReportSection
-    Version 0.4 - Raphael Perez - 04/02/2016
-        - Fixed issue when executing on a Windows 10 machine
-    Version 0.5 - David Stein (4/10/2017)
-        - Added support for MS Word 2016
-        - Changed "cm12R2healthCheck.xml" to "cmhealthcheck.xml"
-        - Detailed is now a [switch] not a [boolean]
-        - Added params for CoverPage, Author, CustomerName, etc.
-        - Bugfixes for Word document builtin properties updates
-        - Minor bugfixes throughout
-    Version 0.6 - David Stein (4/18/2017)
-        - Set table styles to be consistent
-    Version 0.6.1 - David Stein (4/23/2017)
-        - Added CmdletBinding() and some other additions
-	Version 0.6.2 - David Stein (5/16/2017)
-        - Minor formatting updates
+    Version 0.6.4 - David Stein (7/26/2017)
+        - Bug fixes with healthcheckfilename references
+        - Changed default copyright name to "PCM"
+
     Thanks to:
     Base script (the hardest part) created by Rafael Perez (www.rflsystems.co.uk)
     Word functions copied from Carl Webster (www.carlwebster.com)
@@ -77,34 +61,39 @@ PARAM (
 	[Parameter (Mandatory = $False, HelpMessage = "Export full data, not only summary")] 
         [switch] $Detailed,
 	[Parameter (Mandatory = $False, HelpMessage = "HealthCheck query file name")] 
-        [string] $Healthcheckfilename = "cmhealthcheck.xml",
+        [string] $Healthcheckfilename = ".\cmhealthcheck.xml",
 	[Parameter (Mandatory = $False, HelpMessage = "Debug more?")] 
         $Healthcheckdebug = $False,
     [parameter (Mandatory = $False, HelpMessage = "Word Template cover page name")] 
         [string] $CoverPage = "Slice (Light)",
     [parameter (Mandatory = $False, HelpMessage = "Customer company name")] 
-        [string] $CustomerName = "Company",
+        [string] $CustomerName = "Contoso",
     [parameter (Mandatory = $False, HelpMessage = "Author's full name")] 
-        [string] $AuthorName = "Author",
+        [string] $AuthorName = "PCM Architect Name",
     [parameter (Mandatory = $False, HelpMessage = "Overwrite existing report file")]
         [switch] $Overwrite
 )
 $time1 = Get-Date -Format "hh:mm:ss"
 Start-Transcript -Path ".\_logs\export-reportfile.log" -Append
-$ScriptVersion  = "0.6.2"
+$ScriptVersion  = "0.6.4"
 $FormatEnumerationLimit = -1
 $bLogValidation = $False
 $bAutoProps     = $True
 $currentFolder  = $PWD.Path
-$CopyrightName  = "En Pointe Technologies, a PCM Company"
+$CopyrightName  = "PCM"
 
-if ($currentFolder.substring($currentFolder.length-1) -ne '\') { $currentFolder+= '\' }
+#if ($currentFolder.substring($currentFolder.length-1) -ne '\') { $currentFolder+= '\' }
 if ($healthcheckdebug -eq $true) { $PSDefaultParameterValues = @{"*:Verbose"=$True}; $currentFolder = "C:\Temp\CMHealthCheck\" }
 $logFolder = $currentFolder + "_Logs\"
 if ($reportFolder.substring($reportFolder.length-1) -ne '\') { $reportFolder+= '\' }
 $component = ($MyInvocation.MyCommand.Name -replace '.ps1', '')
 $logfile = $logFolder + $component + ".log"
 $Error.Clear()
+
+Write-Verbose "Current Folder: $currentFolder"
+Write-Verbose "Log Folder: $logFolder"
+Write-Verbose "Log File: $logfile" 
+Write-Verbose "Healthcheck Data File: $Healthcheckfilename"
 
 #region functions
 
@@ -158,33 +147,33 @@ Function Test-Folder {
 }
 
 function Get-MessageInformation {
-    param (
+	param (
 		$MessageID
 	)
 	$msg = $MessagesXML.dtsHealthCheck.Message | Where-Object {$_.MessageId -eq $MessageID}
 	if ($msg -eq $null) {
-        Write-Output "Unknown Message ID $MessageID" 
-    }
+        	Write-Output "Unknown Message ID $MessageID"
+	}
 	else { 
-        Write-Output $msg.Description 
-    }
+        	Write-Output $msg.Description 
+	}
 }
 
 function Get-MessageSolution {
-    param (
+	param (
 		$MessageID
 	)
 	$msg = $MessagesXML.dtsHealthCheck.MessageSolution | Where-Object {$_.MessageId -eq $MessageID}
 	if ($msg -eq $null)	{ 
-        Write-Output "There is no known possible solution for Message ID $MessageID" 
-    }
+		Write-Output "There is no known possible solution for Message ID $MessageID" 
+	}
 	else { 
-        Write-Output $msg.Description 
-    }
+		Write-Output $msg.Description 
+	}
 }
 
 function Write-WordText {
-    param (
+	param (
 		$WordSelection,
 		[string] $Text    = "",
 		[string] $Style   = "No Spacing",
@@ -196,7 +185,7 @@ function Write-WordText {
 	$texttowrite = ""
 	$wordselection.Style = $Style
 
-    if ($bold) { $wordselection.Font.Bold = 1 } else { $wordselection.Font.Bold = 0 }
+	if ($bold) { $wordselection.Font.Bold = 1 } else { $wordselection.Font.Bold = 0 }
 	$texttowrite += $text 
 	$wordselection.TypeText($text)
 	If ($newline) { $wordselection.TypeParagraph() }	
@@ -204,17 +193,17 @@ function Write-WordText {
 }
 
 Function Set-WordDocumentProperty {
-    param (
+	param (
 		$Document,
 		$Name,
 		$Value
 	)
-    Write-Verbose "info: document property [$Name] set to [$Value]"
-    $document.BuiltInDocumentProperties($Name) = $Value
+	Write-Verbose "info: document property [$Name] set to [$Value]"
+	$document.BuiltInDocumentProperties($Name) = $Value
 }
 
 Function ReportSection {
-    param (
+	param (
 		$HealthCheckXML,
         $Section,
 		$Detailed = $false,
@@ -510,21 +499,21 @@ Write-Output "script version: $ScriptVersion"
 
 try {
 	$poshversion = $PSVersionTable.PSVersion.Major
-	if (!(Test-Path -Path ($currentFolder + $healthcheckfilename))) {
-        Write-Warning "File $($currentFolder)$($healthcheckfilename) does not exist, no futher action taken"
+	if (!(Test-Path -Path $healthcheckfilename)) {
+        Write-Warning "File $healthcheckfilename does not exist, no futher action taken"
 		Exit
     }
     else { 
-        [xml]$HealthCheckXML = Get-Content ($currentFolder + $healthcheckfilename) 
+        [xml]$HealthCheckXML = Get-Content ($healthcheckfilename) 
     }
 
-	if (!(Test-Path -Path ($currentFolder + "Messages.xml"))) {
-        Write-Warning "File $($currentFolder)Messages.xml does not exist, no futher action taken"
+	if (!(Test-Path -Path ".\Messages.xml")) {
+        Write-Warning "File Messages.xml does not exist, no futher action taken"
 		Exit
     }
     else { 
         Write-Verbose "reading messages.xml data"
-        [xml]$MessagesXML = Get-Content ($currentFolder + 'Messages.xml') 
+        [xml]$MessagesXML = Get-Content '.\Messages.xml'
     }
 
     if (Test-Folder -Path $logFolder) {
