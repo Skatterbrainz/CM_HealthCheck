@@ -1,5 +1,5 @@
 <?xml version="1.0" standalone="yes"?>
-<!-- 0.64 updated 5/22/2017 -->
+<!-- 0.64 updated 7/26/2017 -->
 <dtsHealthCheck xmlns="http://tempuri.org/HealthCheckDataSet.xsd">
   <HealthCheck>
     <section>1</section>
@@ -44,6 +44,7 @@ DECLARE @SiteNumber int
 DECLARE @CPC varchar(8000)
 DECLARE @DWP varchar(8000)
 DECLARE @DMP varchar(8000)
+DECLARE @SCP varchar(8000)
 
 SET @SMSProvider = ''
 SET @DP = ''
@@ -60,6 +61,7 @@ SET @SNS = ''
 SET @CPC = ''
 SET @DWP = ''
 SET @DMP = ''
+SET @SCP = ''
 
 select @SiteCode = '@@SITECODE@@'
 
@@ -165,6 +167,12 @@ BEGIN
 		set @DMP = @DMP+ @ServerName
 	END 
 
+	if @RoleName = 'SMS Service Connection Point'
+	begin 
+		if Len (@SCP) &lt;&gt; 0 set @SCP = @SCP+ ', '
+		set @DMP = @SCP+ @ServerName
+	END 
+
 	FETCH NEXT FROM @ServerList INTO @RoleName,@ServerName
 END
 CLOSE @ServerList
@@ -200,6 +208,9 @@ SELECT
 	when right(s.Version,9) = '5.00.8458.1520' then '1610 Hotfix 1 of 2'
 	when right(s.Version,9) = '5.00.8458.1526' then '1610 Hotfix 2 of 2'
 	when right(s.Version,9) = '5.00.8498.1000' then '1702'
+	when right(s.Version,9) = '5.00.8498.1700' then '1702 Hotfix 1'
+	when right(s.Version,9) = '5.00.8498.1711' then '1702 Hotfix 2'
+	when right(s.Version,9) = '5.00.8533.1000' then '1706'
 	else cast(s.Version as varchar(100))
   end as SPLevel,
   case 
@@ -234,7 +245,8 @@ SELECT
   @SNS as SNS,
   @CPC as CPC,
   @DWP as DWP,
-  @DMP as DMP
+  @DMP as DMP,
+  @SCP as SCP 
 FROM Sites s inner join SC_SiteDefinition sd on sd.SiteCode = s.SiteCode
 where s.SiteCode = @SiteCode
     </sqlquery>
@@ -270,6 +282,7 @@ where s.SiteCode = @SiteCode
 	  <Field FieldName="CPC" Description="Cloud Proxy Connector" value="" format="" key="false" groupby="1" />
 	  <Field FieldName="DWP" Description="Data Warehouse Service Point" value="" format="" key="false" groupby="1" />
 	  <Field FieldName="DMP" Description="DMP Connector" value="" format="" key="false" groupby="1" />
+	  <Field FieldName="SCP" Description="Service Connection Point" value="" format="" key="false" groupby="1" />
     </Fields>
   </HealthCheck>
   <HealthCheck>
@@ -1329,7 +1342,8 @@ SELECT  trk.SiteRequesting
       <Field FieldName="TotalQueueAtStart" Description="Total Queue At Start" value="" format="" key="false" groupby="1" />
       <Field FieldName="TotalQueueAtEnd" Description="Total Queue At End" value="" format="" key="false" groupby="1" />
     </Fields>
-  </HealthCheck> 
+  </HealthCheck>
+<!--  
   <HealthCheck>
     <section>5</section>
     <IsTextOnly>true</IsTextOnly>
@@ -1370,6 +1384,7 @@ ReportingSiteCode, ServerName from v_Site s
       <Field FieldName="Total" Description="Total" value="" format="" key="false" groupby="3" />
     </Fields>
   </HealthCheck>
+-->
   <HealthCheck>
     <section>5</section>
     <IsTextOnly>false</IsTextOnly>
@@ -1466,7 +1481,7 @@ where Targeted &gt; 0 and NumberInstalled &lt;&gt; Targeted
       <Field FieldName="SoftwareName" Description="Software Name" value="" format="" key="false" groupby="1" />
       <Field FieldName="Targeted" Description="Targeted" value="" format="" key="false" groupby="2" />
       <Field FieldName="NumberInstalled" Description="Installed" value="" format="" key="false" groupby="2" />
-      <Field FieldName="NumberErrors" Description="Erors" value="" format="" key="false" groupby="2" />
+      <Field FieldName="NumberErrors" Description="Errors" value="" format="" key="false" groupby="2" />
       <Field FieldName="NumberInProgress" Description="In Progress" value="" format="" key="false" groupby="2" />
       <Field FieldName="NumberUnknown" Description="Unknown" value="" format="" key="false" groupby="2" />
       <Field FieldName="ObjectTypeName" Description="Object Type" value="" format="" key="false" groupby="2" />
@@ -2333,6 +2348,22 @@ where uss.LastStatusMessageID &lt;&gt; 0 and fcm.CollectionID = 'SMS00001'
     <WordStyle>Heading 2</WordStyle>
     <EmptyText>There is no information to be populated here</EmptyText>
     <querytype>sql</querytype>
+	<!-- query statement edited by David Stein 7-26-2017 -->
+	<sqlquery>
+select distinct 
+	assc.LastEnforcementErrorCode as ErrorCode,
+	assc.LastEnforcementMessageID as Message
+from v_CIAssignment cia with (NOLOCK) 
+join v_UpdateAssignmentStatus_Live assc with (NOLOCK) on assc.AssignmentID = cia.AssignmentID 
+join v_R_System sys with (NOLOCK) on assc.ResourceID=sys.ResourceID and isnull(sys.Obsolete0,0) &lt;&gt; 1 
+join v_FullCollectionMembership_Valid fcm with (NOLOCK) on assc.ResourceID = fcm.ResourceID
+where 
+assc.LastEnforcementErrorID &lt;&gt; 0 
+and assc.LastEnforcementMessageID in (6,9) 
+and assc.IsCompliant=0 
+and fcm.CollectionID = 'SMS00001'
+	</sqlquery>
+<!-- original query statement
     <sqlquery>
 select distinct 
 	isnull(assc.LastEnforcementErrorCode,0) as ErrorCode,
@@ -2343,6 +2374,7 @@ join v_R_System sys with (NOLOCK) on assc.ResourceID=sys.ResourceID and isnull(s
 join v_FullCollectionMembership_Valid fcm with (NOLOCK) on assc.ResourceID = fcm.ResourceID
 where assc.LastEnforcementErrorID&amp;0x0000FFFF &lt;&gt; 0 and assc.LastEnforcementMessageID in (6,9) and assc.IsCompliant=0 and fcm.CollectionID = 'SMS00001'
     </sqlquery>
+-->
     <Fields>
       <Field FieldName="ErrorCode" Description="Error Code" value="" format="" key="false" groupby="1" />
       <Field FieldName="Message" Description="Solution" value="" format="MessageSolution" key="false" groupby="1" />
