@@ -37,10 +37,6 @@
     [switch] [optional] Overwrite existing report file if found
 
 .NOTES
-    Version 0.6.4 - David Stein (7/26/2017)
-        - Bug fixes with healthcheckfilename references
-        - Changed default copyright name to "PCM"
-
     Thanks to:
     Base script (the hardest part) created by Rafael Perez (www.rflsystems.co.uk)
     Word functions copied from Carl Webster (www.carlwebster.com)
@@ -67,20 +63,21 @@ PARAM (
     [parameter (Mandatory = $False, HelpMessage = "Word Template cover page name")] 
         [string] $CoverPage = "Slice (Light)",
     [parameter (Mandatory = $False, HelpMessage = "Customer company name")] 
-        [string] $CustomerName = "Contoso",
+        [string] $CustomerName = "Awesome Customer Name",
     [parameter (Mandatory = $False, HelpMessage = "Author's full name")] 
-        [string] $AuthorName = "PCM Architect Name",
+        [string] $AuthorName = "Your Awesome Name",
+	[parameter (Mandatory = $False, HelpMessage = "Footer text")]
+	[string] $CopyrightName  = "Your Awesome Company Name",
     [parameter (Mandatory = $False, HelpMessage = "Overwrite existing report file")]
         [switch] $Overwrite
 )
 $time1 = Get-Date -Format "hh:mm:ss"
 Start-Transcript -Path ".\_logs\export-reportfile.log" -Append
-$ScriptVersion  = "0.6.4"
+$ScriptVersion  = "1707.01"
 $FormatEnumerationLimit = -1
 $bLogValidation = $False
 $bAutoProps     = $True
 $currentFolder  = $PWD.Path
-$CopyrightName  = "PCM"
 
 #if ($currentFolder.substring($currentFolder.length-1) -ne '\') { $currentFolder+= '\' }
 if ($healthcheckdebug -eq $true) { $PSDefaultParameterValues = @{"*:Verbose"=$True}; $currentFolder = "C:\Temp\CMHealthCheck\" }
@@ -147,33 +144,33 @@ Function Test-Folder {
 }
 
 function Get-MessageInformation {
-	param (
+    param (
 		$MessageID
 	)
 	$msg = $MessagesXML.dtsHealthCheck.Message | Where-Object {$_.MessageId -eq $MessageID}
 	if ($msg -eq $null) {
-        	Write-Output "Unknown Message ID $MessageID"
-	}
+        Write-Output "Unknown Message ID $MessageID" 
+    }
 	else { 
-        	Write-Output $msg.Description 
-	}
+        Write-Output $msg.Description 
+    }
 }
 
 function Get-MessageSolution {
-	param (
+    param (
 		$MessageID
 	)
 	$msg = $MessagesXML.dtsHealthCheck.MessageSolution | Where-Object {$_.MessageId -eq $MessageID}
 	if ($msg -eq $null)	{ 
-		Write-Output "There is no known possible solution for Message ID $MessageID" 
-	}
+        Write-Output "There is no known possible solution for Message ID $MessageID" 
+    }
 	else { 
-		Write-Output $msg.Description 
-	}
+        Write-Output $msg.Description 
+    }
 }
 
 function Write-WordText {
-	param (
+    param (
 		$WordSelection,
 		[string] $Text    = "",
 		[string] $Style   = "No Spacing",
@@ -185,7 +182,7 @@ function Write-WordText {
 	$texttowrite = ""
 	$wordselection.Style = $Style
 
-	if ($bold) { $wordselection.Font.Bold = 1 } else { $wordselection.Font.Bold = 0 }
+    if ($bold) { $wordselection.Font.Bold = 1 } else { $wordselection.Font.Bold = 0 }
 	$texttowrite += $text 
 	$wordselection.TypeText($text)
 	If ($newline) { $wordselection.TypeParagraph() }	
@@ -193,17 +190,17 @@ function Write-WordText {
 }
 
 Function Set-WordDocumentProperty {
-	param (
+    param (
 		$Document,
 		$Name,
 		$Value
 	)
-	Write-Verbose "info: document property [$Name] set to [$Value]"
-	$document.BuiltInDocumentProperties($Name) = $Value
+    Write-Verbose "info: document property [$Name] set to [$Value]"
+    $document.BuiltInDocumentProperties($Name) = $Value
 }
 
 Function ReportSection {
-	param (
+    param (
 		$HealthCheckXML,
         $Section,
 		$Detailed = $false,
@@ -212,7 +209,7 @@ Function ReportSection {
         $LogFile
 	)
 
-	Write-Log -Message "Starting Secion $section with detailed as $($detailed.ToString())" -LogFile $logfile
+	Write-Log -Message "Starting Section $section with detailed as $($detailed.ToString())" -LogFile $logfile
 
 	foreach ($healthCheck in $HealthCheckXML.dtsHealthCheck.HealthCheck) {
 		if ($healthCheck.Section.tolower() -ne $Section) { continue }
@@ -493,6 +490,32 @@ Function ReportSection {
 	}
 }
 
+function Write-RevisionTable (){
+	$Table = $Null
+	$TableRange = $Null
+	$TableRange = $selection.Range
+	$Table = $doc.Tables.Add($TableRange, 4, 4)
+	$Table.Style = $TableStyle
+	for ($i -eq 1; $i -le 4; $i++) {
+		$Table.Cell($i, 1).Range.Font.Bold = $True
+		$Table.Cell($i, 2).Range.Font.Bold = $False
+	}
+	$Table.Cell(1, 1).Range.Text = "Version"
+	$Table.Cell(1, 2).Range.Text = "Date"
+	$Table.Cell(1, 3).Range.Text = "Description"
+	$Table.Cell(1, 4).Range.Text = "Author"
+	$Table.Cell(2, 1).Range.Text = "1.0"
+	$Table.Cell(2, 2).Range.Text = $(Get-Date).ToShortDateString()
+	$Table.Cell(2, 3).Range.Text = "Initial release"
+	$Table.Cell(2, 4).Range.Text = $($AuthorName -split " " | ForEach-Object {$_.Substring(0,1)}) -join ""
+
+	$selection.EndOf(15) | Out-Null
+	$selection.MoveDown() | Out-Null
+	$doc.ActiveWindow.ActivePane.view.SeekView = 0
+	$selection.EndKey(6, 0) | Out-Null
+	$selection.TypeParagraph()
+}
+
 #endregion
 
 Write-Output "script version: $ScriptVersion"
@@ -646,11 +669,18 @@ try {
 	$selection.EndKey(6,0) | Out-Null
 
     $absText = "This document provides a point-in-time inventory and analysis of the "
-    $absText += "System Center Configuration Manager site for $CustomerName"
+    $absText += "System Center Configuration Manager site environment for $CustomerName. "
+	$absText += "For questions, concerns or comments, please consult the $CopyrightName "
+	$absText += "architect or engineer who provided this document."
 	
 	Write-WordText -WordSelection $selection -Text "Abstract" -Style "Heading 1" -NewLine $true
 	Write-WordText -WordSelection $selection -Text $absText -NewLine $true
+	
+	# insert REVISION HISTORY table
+	Write-WordText -WordSelection $selection -Text "Revision History" -Style "Heading 1" -NewLine $true
 
+	Write-RevisionTable
+	
 	$selection.InsertNewPage()
 
     ReportSection -HealthCheckXML $HealthCheckXML -section '1' -Doc $doc -Selection $selection -LogFile $logfile 
