@@ -1,5 +1,5 @@
 <?xml version="1.0" standalone="yes"?>
-<!-- 0.64 updated 7/26/2017 -->
+<!-- Version 1707.01 updated 8/1/2017 -->
 <dtsHealthCheck xmlns="http://tempuri.org/HealthCheckDataSet.xsd">
   <HealthCheck>
     <section>1</section>
@@ -1406,7 +1406,7 @@ and stat.Time &gt;= DATEADD(dd,-convert(int,@@NUMBEROFDAYS@@),GetDate())
       <Field FieldName="SiteCode" Description="Site Code" value="" format="" key="false" groupby="2" />
       <Field FieldName="Component" Description="Component" value="" format="" key="false" groupby="2" />
       <Field FieldName="MessageID" Description="Message ID" value="" format="" key="false" groupby="2" />
-      <Field FieldName="Value" Description="Message" value="" format="Message" key="false" groupby="1" />
+      <Field FieldName="Value" Description="Message" value="" format="" key="false" groupby="1" />
       <Field FieldName="Total" Description="Total" value="" format="" key="false" groupby="3" />
     </Fields>
   </HealthCheck>
