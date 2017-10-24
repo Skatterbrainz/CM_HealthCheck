@@ -1,4 +1,4 @@
-# cm_healthcheck 1707.01
+# cm_healthcheck 1710.01
 Scripts for auditing and reporting a Configuration Manager site environment.
 
 There are two (2) primary scripts: Get-CM-Inventory.ps1 and Export-CM-HealthCheck.ps1.  Get-CM-Inventory.ps1 is usually executed on the CAS or standalone primary site server.  Export-CM-HealthCheck.ps1 is usually executed on a desktop computer which has Microsoft Office Word installed (2010, 2013, or 2016 required).  Both scripts depend on additional files in order to function: cmhealthcheck.xml and messages.xml.  The Export-CM-HealthCheck.ps1 script requires the output folder produced by prior execution of Get-CM-Inventory.ps1.
@@ -25,10 +25,14 @@ Report generation script
 * -AuthorName [name]
 * -CompanyName [name]
 * -Overwrite [switch]
+* -HealthcheckFilename [string] (optional)
+  * Default is URL to cmhealthcheck.xml on GitHub (or specify local copy)
+* -MessagesFilename [string] (optional)
+  * Default is URL to messages.xml on GitHub (or specify local copy)
 
 ### Examples
 
-* Export-CM-HealthCheck.ps1 -ReportFolder "2017-08-01\cm01.contoso.com" -CustomerName "Contoso" -AuthorName "Frank Zappa" -CompanyName "Fubar Tech" -Overwrite -Verbose
+* Export-CM-HealthCheck.ps1 -ReportFolder "2017-10-11\cm01.contoso.com" -CustomerName "Contoso" -AuthorName "D. Stein" -CompanyName "Fubar Tech" -Overwrite -Verbose
 
 ## Errata
 
