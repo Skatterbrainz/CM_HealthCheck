@@ -16,8 +16,13 @@
 
 .PARAMETER Healthcheckfilename
     [string] [optional] healthcheck configuration file name
-    default = cmhealthcheck.xml
-
+	default   = "https://raw.githubusercontent.com/Skatterbrainz/CM_HealthCheck/master/cmhealthcheck.xml"
+	alternate = ".\cmhealthcheck.xml"
+.PARAMETER MessagesFilename
+    [string] [optional] messages lookup file
+        default   = "https://raw.githubusercontent.com/Skatterbrainz/CM_HealthCheck/master/Messages.xml"
+	alternate = ".\Messages.xml"
+	
 .PARAMETER Healthcheckdebug
     [boolean] [optional] Enable verbose output (or use -Verbose)
 
@@ -45,7 +50,7 @@
 .EXAMPLE
     Option 1: powershell.exe -ExecutionPolicy Bypass .\Export-CM-Healthcheck.ps1 [Parameters]
     Option 2: Open Powershell and execute .\Export-CM-Healthcheck.ps1 [Parameters]
-    Option 3: .\Export-CM-HealthCheck.ps1 -ReportFolder "2017-05-17\cm1.contoso.com" -Detailed -CustomerName "ACME" -AuthorName "David Stein" -Overwrite -Verbose
+    Option 3: .\Export-CM-HealthCheck.ps1 -ReportFolder "2017-10-17\cm01.contoso.com" -Detailed -CustomerName "ACME" -AuthorName "David Stein" -Overwrite -Verbose
 
 #>
 
@@ -56,30 +61,32 @@ PARAM (
         [string] $ReportFolder,
 	[Parameter (Mandatory = $False, HelpMessage = "Export full data, not only summary")] 
         [switch] $Detailed,
-	[Parameter (Mandatory = $False, HelpMessage = "HealthCheck query file name")] 
-        [string] $Healthcheckfilename = ".\cmhealthcheck.xml",
-	[Parameter (Mandatory = $False, HelpMessage = "Debug more?")] 
-        $Healthcheckdebug = $False,
     [parameter (Mandatory = $False, HelpMessage = "Word Template cover page name")] 
         [string] $CoverPage = "Slice (Light)",
     [parameter (Mandatory = $False, HelpMessage = "Customer company name")] 
-        [string] $CustomerName = "Awesome Customer Name",
+        [string] $CustomerName = "Customer Name",
     [parameter (Mandatory = $False, HelpMessage = "Author's full name")] 
-        [string] $AuthorName = "Your Awesome Name",
+        [string] $AuthorName = "Your Name",
 	[parameter (Mandatory = $False, HelpMessage = "Footer text")]
-	[string] $CopyrightName  = "Your Awesome Company Name",
+		[string] $CopyrightName  = "Your Company Name",
+	[Parameter (Mandatory = $False, HelpMessage = "HealthCheck query file name")] 
+		[string] $Healthcheckfilename = 'https://raw.githubusercontent.com/Skatterbrainz/CM_HealthCheck/master/cmhealthcheck.xml',
+	[Parameter (Mandatory = $False, HelpMessage = "HealthCheck messages file name")]
+		[string] $MessagesFilename = 'https://raw.githubusercontent.com/Skatterbrainz/CM_HealthCheck/master/Messages.xml',
+	[Parameter (Mandatory = $False, HelpMessage = "Debug more?")] 
+        $Healthcheckdebug = $False,
     [parameter (Mandatory = $False, HelpMessage = "Overwrite existing report file")]
         [switch] $Overwrite
 )
 $time1 = Get-Date -Format "hh:mm:ss"
 Start-Transcript -Path ".\_logs\export-reportfile.log" -Append
-$ScriptVersion  = "1707.01"
+$ScriptVersion  = "1710.01"
 $FormatEnumerationLimit = -1
 $bLogValidation = $False
 $bAutoProps     = $True
 $currentFolder  = $PWD.Path
+$NormalFontSize = 10
 
-#if ($currentFolder.substring($currentFolder.length-1) -ne '\') { $currentFolder+= '\' }
 if ($healthcheckdebug -eq $true) { $PSDefaultParameterValues = @{"*:Verbose"=$True}; $currentFolder = "C:\Temp\CMHealthCheck\" }
 $logFolder = $currentFolder + "_Logs\"
 if ($reportFolder.substring($reportFolder.length-1) -ne '\') { $reportFolder+= '\' }
@@ -143,6 +150,29 @@ Function Test-Folder {
     else { Write-Output $false }
 }
 
+function Get-XmlUrlContent {
+    param (
+        [parameter(Mandatory=$True, HelpMessage="Target URL")]
+        [ValidateNotNullOrEmpty()]
+        [string] $Url
+	)
+	Write-Verbose "reading data from remote file: $Url"
+    $content = ""
+    try {
+        $content = Invoke-WebRequest -Uri $Url -ErrorAction Stop
+    }
+    catch {
+    }
+    if ($content -ne "") {
+        $lines = $content -split "`n"
+        $result = ""
+        for ($i = 1; $i -lt $lines.count; $i++) {
+            $result += $lines[$i] + "`n"
+        }
+    }
+    Write-Output $result
+}
+
 function Get-MessageInformation {
     param (
 		$MessageID
@@ -199,7 +229,7 @@ Function Set-WordDocumentProperty {
     $document.BuiltInDocumentProperties($Name) = $Value
 }
 
-Function ReportSection {
+Function Write-ReportSection {
     param (
 		$HealthCheckXML,
         $Section,
@@ -491,6 +521,7 @@ Function ReportSection {
 }
 
 function Write-RevisionTable (){
+	Write-Verbose "inserting revision history table"
 	$Table = $Null
 	$TableRange = $Null
 	$TableRange = $selection.Range
@@ -516,29 +547,108 @@ function Write-RevisionTable (){
 	$selection.TypeParagraph()
 }
 
+function Write-TableGrid {
+    param (
+        [parameter(Mandatory=$True)]
+        [string] $Caption,
+        [parameter(Mandatory=$True)]
+        [int] $Rows,
+        [parameter(Mandatory=$True)]
+        [string[]] $ColumnHeadings
+	)
+	Write-Verbose "inserting custom table: $Caption"
+    $Selection.TypeText($Caption)
+    $Selection.Style = "Heading 1"
+    $Selection.TypeParagraph()
+    $Cols  = $ColumnHeadings.Length
+    $Table = $doc.Tables.Add($Selection.Range, $rows, $cols)
+    $Table.Style = "Grid Table 4 - Accent 1"
+    for ($col = 1; $col -le $cols; $col++) {
+        $Table.Cell(1, $col).Range.Text = $ColumnHeadings[$col-1]
+    }
+    for ($row = 1; $row -lt $rows; $row++) {
+        $Table.Cell($row+1, 1).Range.Text = $row.ToString()
+    }
+    $Table.PreferredWidthType = 2
+    $Table.PreferredWidth = 100
+    $Table.Columns.First.PreferredWidthType = 2
+    $Table.Columns.First.PreferredWidth = 7
+    if ($Cols -gt 2) {
+        $Table.Columns(2).PreferredWidthType = 2
+        $Table.Columns(2).PreferredWIdth = 7
+    }
+    $Selection.EndOf(15) | Out-Null
+	$Selection.MoveDown() | Out-Null
+	$doc.ActiveWindow.ActivePane.view.SeekView = 0
+	$Selection.EndKey(6, 0) | Out-Null
+	$Selection.TypeParagraph()
+}
 #endregion
 
 Write-Output "script version: $ScriptVersion"
+$poshversion = $PSVersionTable.PSVersion.Major
 
-try {
-	$poshversion = $PSVersionTable.PSVersion.Major
+if ($Healthcheckfilename.StartsWith('http')) {
+	Write-Verbose "importing xml from remote URI: $healthcheckfilename"
+	try {
+		[xml]$HealthCheckXML = Invoke-RestMethod -Uri $Healthcheckfilename
+	}
+	catch {
+		Write-Error "Failed to import data from Uri: $HealthcheckFilename"
+		Write-Warning "If no Internet access is allowed, use -HealthcheckFilename '.\cmhealthcheck.xml'"
+		break
+	}
+	Write-Verbose "configuration XML data loaded successfully"
+}
+else {
+	Write-Verbose "importing Configuration xml from local file: $healthcheckfilename"
 	if (!(Test-Path -Path $healthcheckfilename)) {
         Write-Warning "File $healthcheckfilename does not exist, no futher action taken"
-		Exit
+		break
     }
     else { 
-        [xml]$HealthCheckXML = Get-Content ($healthcheckfilename) 
+        try {
+			[xml]$HealthCheckXML = Get-Content ($healthcheckfilename) 
+		}
+		catch {
+			Write-Error "Failed to import data from local file: $HealthcheckFilename"
+			break
+		}
+		Write-Verbose "configuration XML data loaded successfully"
     }
+}
 
+if ($MessagesFilename.StartsWith('http')) {
+	Write-Verbose "importing Messages xml from remote URL: $MessagesFilename"
+	try {
+		[xml]$MessagesXML = Get-XmlUrlContent -Url $MessagesFilename
+	}
+	catch {
+		Write-Error "Failed to import data from Uri: $MessagesFilename"
+		Write-Warning "If no Internet access is allowed, use -MessagesFilename '.\messages.xml'"
+		break
+	}
+	Write-Verbose "Messages XML data loaded successfully"
+}
+else {
 	if (!(Test-Path -Path ".\Messages.xml")) {
         Write-Warning "File Messages.xml does not exist, no futher action taken"
-		Exit
+		break
     }
     else { 
         Write-Verbose "reading messages.xml data"
-        [xml]$MessagesXML = Get-Content '.\Messages.xml'
-    }
+        try {
+			[xml]$MessagesXML = Get-Content '.\Messages.xml'
+		}
+		catch {
+			Write-Error "Failed to import data from local file: $MessagesFilename"
+			break
+		}
+	}
+	Write-Verbose "Messages XML data loaded successfully"
+}
 
+if ($HealthCheckXML -and $MessagesXML) {
     if (Test-Folder -Path $logFolder) {
     	try {
         	New-Item ($logFolder + 'Test.log') -Type File -Force | Out-Null 
@@ -631,6 +741,7 @@ try {
     Write-Verbose "info: disabling real-time spelling and grammar check"
 	$Word.Options.CheckGrammarAsYouType  = $False
 	$Word.Options.CheckSpellingAsYouType = $False
+	$Doc.Styles("Normal").Font.Size = $NormalFontSize
 	
     Write-Verbose "info: loading default building blocks template"
 	$word.Templates.LoadBuildingBlocks() | Out-Null	
@@ -683,36 +794,37 @@ try {
 	
 	$selection.InsertNewPage()
 
-    ReportSection -HealthCheckXML $HealthCheckXML -section '1' -Doc $doc -Selection $selection -LogFile $logfile 
-    ReportSection -HealthCheckXML $HealthCheckXML -section '2' -Doc $doc -Selection $selection -LogFile $logfile 
-    ReportSection -HealthCheckXML $HealthCheckXML -section '3' -Doc $doc -Selection $selection -LogFile $logfile 
-    ReportSection -HealthCheckXML $HealthCheckXML -section '4' -Doc $doc -Selection $selection -LogFile $logfile 
-    ReportSection -HealthCheckXML $HealthCheckXML -section '5' -Doc $doc -Selection $selection -LogFile $logfile 
+	Write-TableGrid -Caption "Summary of Findings" -Rows 4 -ColumnHeadings ("Item", "Explanation")
+	Write-TableGrid -Caption "Summary of Recommendations" -Rows 4 -ColumnHeadings ("Item", "Severity", "Explanation")
+
+	$selection.InsertNewPage()
+
+    Write-ReportSection -HealthCheckXML $HealthCheckXML -section '1' -Doc $doc -Selection $selection -LogFile $logfile 
+    Write-ReportSection -HealthCheckXML $HealthCheckXML -section '2' -Doc $doc -Selection $selection -LogFile $logfile 
+    Write-ReportSection -HealthCheckXML $HealthCheckXML -section '3' -Doc $doc -Selection $selection -LogFile $logfile 
+    Write-ReportSection -HealthCheckXML $HealthCheckXML -section '4' -Doc $doc -Selection $selection -LogFile $logfile 
+    Write-ReportSection -HealthCheckXML $HealthCheckXML -section '5' -Doc $doc -Selection $selection -LogFile $logfile 
 
     if ($detailed -eq $true) {
-        ReportSection -HealthCheckXML $HealthCheckXML -Section '5' -Detailed $true -Doc $doc -Selection $selection -LogFile $logfile 
+        Write-ReportSection -HealthCheckXML $HealthCheckXML -Section '5' -Detailed $true -Doc $doc -Selection $selection -LogFile $logfile 
     }
 
-    ReportSection -HealthCheckXML $HealthCheckXML -Section '6' -Doc $doc -Selection $selection -LogFile $logfile 
+    Write-ReportSection -HealthCheckXML $HealthCheckXML -Section '6' -Doc $doc -Selection $selection -LogFile $logfile 
 }
-catch {
-	Write-Log -Message "Something bad happen that I don't know about" -Severity 3 -LogFile $logfile
-	Write-Log -Message "The following error happen, no futher action taken" -Severity 3 -LogFile $logfile
-    $errorMessage = $Error[0].Exception.Message
-    $errorCode = "0x{0:X}" -f $Error[0].Exception.ErrorCode
-    Write-Log -Message "Error $errorCode : $errorMessage" -LogFile $logfile -Severity 3
-    Write-Log -Message "Full Error Message Error $($error[0].ToString())" -LogFile $logfile -Severity 3
-	$Error.Clear()
+else {
+	Write-Log -Message "unable to load Healthcheck or Messages XML data" -Severity 3 -LogFile $logfile
+	Write-Error "failed to load configuration data from XML files"
+	$error.Clear()
 }
-finally {
-	if ($toc -ne $null) { $doc.TablesOfContents.item(1).Update() }
-	if ($bLogValidation -eq $false) {
-		Write-Host "Ending HealthCheck Export"
-        Write-Host "==========" 
+if ($toc -ne $null) {
+	$doc.TablesOfContents.Item(1).Update()
+	if ($bLogValidation -eq $False) {
+		Write-Host "ending healthcheck report"
+		Write-Host "================="
 	}
 	else {
-        Write-Log -Message "Ending HealthCheck Export" -LogFile $logfile
-        Write-Log -Message "==========" -LogFile $logfile
+		Write-Log -Message "Ending HealthCheck Export" -LogFile $logfile
+		Write-Log -Message "=================" -LogFile $logfile
 	}
 }
 $time2   = Get-Date -Format "hh:mm:ss"
