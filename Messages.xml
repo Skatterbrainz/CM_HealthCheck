@@ -1,5 +1,4 @@
-﻿<?xml version="1.0" standalone="yes"?>
-<!-- Version 1707.01 8/1/2017 -->
+<?xml version="1.0" standalone="yes"?>
 <dtsHealthCheck xmlns="http://tempuri.org/HealthCheckDataSet.xsd">
   <Message>
     <MessageID>500</MessageID>
