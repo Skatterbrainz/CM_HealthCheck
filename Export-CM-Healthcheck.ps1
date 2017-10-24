@@ -18,7 +18,11 @@
     [string] [optional] healthcheck configuration file name
 	default   = "https://raw.githubusercontent.com/Skatterbrainz/CM_HealthCheck/master/cmhealthcheck.xml"
 	alternate = ".\cmhealthcheck.xml"
-
+.PARAMETER MessagesFilename
+    [string] [optional] messages lookup file
+        default   = "https://raw.githubusercontent.com/Skatterbrainz/CM_HealthCheck/master/Messages.xml"
+	alternate = ".\Messages.xml"
+	
 .PARAMETER Healthcheckdebug
     [boolean] [optional] Enable verbose output (or use -Verbose)
 
@@ -46,7 +50,7 @@
 .EXAMPLE
     Option 1: powershell.exe -ExecutionPolicy Bypass .\Export-CM-Healthcheck.ps1 [Parameters]
     Option 2: Open Powershell and execute .\Export-CM-Healthcheck.ps1 [Parameters]
-    Option 3: .\Export-CM-HealthCheck.ps1 -ReportFolder "2017-05-17\cm1.contoso.com" -Detailed -CustomerName "ACME" -AuthorName "David Stein" -Overwrite -Verbose
+    Option 3: .\Export-CM-HealthCheck.ps1 -ReportFolder "2017-10-17\cm01.contoso.com" -Detailed -CustomerName "ACME" -AuthorName "David Stein" -Overwrite -Verbose
 
 #>
 
