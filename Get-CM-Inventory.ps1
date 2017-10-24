@@ -75,8 +75,8 @@ param (
 		[string] $SmsProvider,
     [Parameter(Mandatory = $False, HelpMessage = "Number of Days for HealthCheck")] 
 		[int] $NumberofDays = 7,
-	[Parameter(Mandatory = $False, HelpMessage = "HealthCheck query file name")] 
-		[string] $HealthcheckFilename = 'cmhealthcheck.xml',
+	[Parameter (Mandatory = $False, HelpMessage = "HealthCheck query file name")] 
+		[string] $Healthcheckfilename = 'https://raw.githubusercontent.com/Skatterbrainz/CM_HealthCheck/master/cmhealthcheck.xml',
 	[Parameter(Mandatory = $False, HelpMessage = "Overwrite existing report?")] 
 		[switch] $Overwrite,
 	[Parameter(Mandatory=$False, HelpMessage="Skip hotfix inventory")]
@@ -85,17 +85,16 @@ param (
 
 Start-Transcript -Path ".\Get-CM-Inventory-Runtime.log"
 
-$ScriptVersion = "1707.01"
-
-$FormatEnumerationLimit = -1
+$ScriptVersion = "1710.01"
 $startTime     = Get-Date
 $currentFolder = $PWD.Path
 if ($currentFolder.substring($currentFolder.Length-1) -ne '\') { $currentFolder+= '\' }
-
+$FormatEnumerationLimit = -1
 $logFolder     = $currentFolder + "_Logs\"
 $reportFolder  = $currentFolder + (Get-Date -UFormat "%Y-%m-%d") + "\" + $SmsProvider + "\"
 $component     = ($MyInvocation.MyCommand.Name -replace '.ps1', '')
 $logfile       = $logFolder + $component + ".log"
+$poshversion   = $PSVersionTable.PSVersion.Major
 $Error.Clear()
 $bLogValidation = $false
 
@@ -103,6 +102,29 @@ $bLogValidation = $false
 
 function Test-Powershell64bit {
     Write-Output ([IntPtr]::size -eq 8)
+}
+
+function Get-XmlUrlContent {
+    param (
+        [parameter(Mandatory=$True, HelpMessage="Target URL")]
+        [ValidateNotNullOrEmpty()]
+        [string] $Url
+	)
+	Write-Verbose "reading data from remote file: $Url"
+    $content = ""
+    try {
+        $content = Invoke-WebRequest -Uri $Url -ErrorAction Stop
+    }
+    catch {
+    }
+    if ($content -ne "") {
+        $lines = $content -split "`n"
+        $result = ""
+        for ($i = 1; $i -lt $lines.count; $i++) {
+            $result += $lines[$i] + "`n"
+        }
+    }
+    Write-Output $result
 }
 
 function Set-ReplaceString {
@@ -1125,7 +1147,7 @@ try {
         	Remove-Item ($logFolder + 'Test.log') -Force | Out-Null 
     	}
     	catch {
-        	Write-Host "Unable to read/write file on $logFolder folder, no futher action taken" -ForegroundColor Red
+        	Write-Error "Unable to read/write file on $logFolder folder, no futher action taken"
         	break
     	}
 	}
@@ -1135,11 +1157,27 @@ try {
 	}
 	$bLogValidation = $true
 
-	if (!(Test-Path -Path ($currentFolder + $healthcheckfilename))) {
-        Write-Host "File $($currentFolder)$($healthcheckfilename) does not exist, no futher action taken" -ForegroundColor Red
-		break
-    }
-    else { [xml]$HealthCheckXML = Get-Content ($currentFolder + $healthcheckfilename) }
+	if ($Healthcheckfilename.StartsWith('http')) {
+		Write-Verbose "importing xml from remote URI: $healthcheckfilename"
+		try {
+			[xml]$HealthCheckXML = Invoke-RestMethod -Uri $Healthcheckfilename
+		}
+		catch {
+			Write-Error "Failed to import data from Uri: $HealthcheckFilename"
+			Write-Warning "If no Internet access is allowed, use -HealthcheckFilename '.\cmhealthcheck.xml'"
+			break
+		}
+		Write-Verbose "configuration XML data loaded successfully"
+	}
+	else {
+		if (!(Test-Path -Path ($currentFolder + $healthcheckfilename))) {
+			Write-Error "File $($currentFolder)$($healthcheckfilename) does not exist, no futher action taken"
+			break
+		}
+		else { 
+			[xml]$HealthCheckXML = Get-Content ($currentFolder + $healthcheckfilename) 
+		}
+	}
 
 	if (Test-Folder -Path $reportFolder) {
     	try {
@@ -1155,8 +1193,6 @@ try {
         Write-Host "Unable to create Log Folder, no futher action taken" -ForegroundColor Red
         break
 	}
-	
-	$poshversion = $PSVersionTable.PSVersion.Major
 	
 	if (($Overwrite) -and (Test-Path $logfile)) {
 		Remove-Item $logfile -Force
@@ -1205,7 +1241,9 @@ try {
 
 	$arrServers = @()
 	$WMIServers = Get-RFLWMIObject -Query "select distinct NetworkOSPath from SMS_SCI_SysResUse where NetworkOSPath not like '%.microsoft.com' and Type in (1,2,4,8)" -ComputerName $smsprovider -NameSpace "root\sms\site_$SiteCodeNamespace" -LogFile $logfile
-	foreach ($WMIServer in $WMIServers) { $arrServers += $WMIServer.NetworkOSPath -replace '\\', '' }
+	foreach ($WMIServer in $WMIServers) { 
+		$arrServers += $WMIServer.NetworkOSPath -replace '\\', '' 
+	}
     if ($arrServers.Count -gt 0) {
     	Write-Verbose $("Servers discovered: " + $arrServers -join(", "))
     }
@@ -1311,9 +1349,7 @@ END
 	try {
 		$SqlCommand.ExecuteNonQuery() | Out-Null
 	}
-	catch {
-        #
-    }
+	catch {}
 	$SqlCommand = $null
 
 	$arrSites = @()
@@ -1336,7 +1372,9 @@ END
         Write-Error "oh shit!"
     }
     Write-Verbose "data adapter is good!"
-	foreach($row in $dataset.Tables[0].Rows) { $arrSites += "$($row.SiteCode)@$($row.ServerName)" }	
+	foreach($row in $dataset.Tables[0].Rows) { 
+		$arrSites += "$($row.SiteCode)@$($row.ServerName)" 
+	}
 	Write-Verbose $("Sites discovered: " + $arrSites -join(", "))
 
 	$SqlCommand = $null
@@ -1352,7 +1390,7 @@ END
 			$HTTPSport = ($portinfo.Props | Where-Object {$_.PropertyName -eq "IISSSLPortsList"}).Value1
 		}
 		ReportSection -HealthCheckXML $HealthCheckXML -Section '1' -sqlConn $sqlConn -SiteCode $arrSiteInfo[0] -NumberOfDays $NumberOfDays -ServerName $arrSiteInfo[1] -ReportTable $ReportTable -LogFile $logfile 
-	}
+	} # foreach
 
 	##section 2 = information that needs be collected against each computer. should not be site specific. query will run only against the higher site in the hierarchy
     Write-Host "Phase 2 of 6"
@@ -1368,7 +1406,9 @@ END
     foreach ($DB in $DBServers) { 
 		$DBServerName = $DB.NetworkOSPath.Replace('\',"") 
 		Write-Log -Message ("Analysing SQLServer: $DBServerName") -LogFile $logfile
-		if ($SQLServerName.ToLower() -eq $DBServerName.ToLower()) { $tmpConnection = $sqlConn }
+		if ($SQLServerName.ToLower() -eq $DBServerName.ToLower()) { 
+			$tmpConnection = $sqlConn 
+		}
 		else {
 			$tmpConnection = Get-SQLServerConnection -SQLServer "$DBServerName,$SQLPort" -DBName "master"
     		$tmpConnection.Open()
@@ -1379,7 +1419,7 @@ END
 		finally {
 			if ($SQLServerName.ToLower() -ne $DBServerName.ToLower()) { $tmpConnection.Close()  }
 		}
-	}
+	} # foreach
 
     ##Section 4 = Database analysis against whole SCCM infrastructure, query will run only against top SQL Server
 	Write-Host "Phase 4 of 6"
@@ -1447,5 +1487,4 @@ $RunSecs  = ((New-TimeSpan -Start $StartTime -End $StopTime).TotalSeconds).ToStr
 $ts       = [timespan]::FromSeconds($RunSecs)
 $RunTime  = $ts.ToString("hh\:mm\:ss")
 Write-Output "Processing completed. Total runtime: $RunTime (hh`:mm`:ss)"
-
 Stop-Transcript
